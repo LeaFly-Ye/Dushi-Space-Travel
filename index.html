@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#05030f">
+  <meta name="description" content="清华大学笃实书院特色小游戏《星海笃行》——躲避弹幕，收集三系知识，击败混沌核心，抵达跃迁终点。">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="format-detection" content="telephone=no">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="星海笃行 · 清华大学笃实书院特色小游戏">
+  <meta property="og:description" content="选择战机，穿越弹幕，收集三系知识，击败混沌核心。支持手机与桌面浏览器。">
+  <title>星海笃行 · 清华大学笃实书院特色小游戏</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2305030f'/%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%23a78bfa' stroke-width='2'/%3E%3Ctext x='32' y='41' text-anchor='middle' font-size='28' fill='%2367e8f9'%3E%E7%AC%83%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="site">
+    <div class="site-glow site-glow-a" aria-hidden="true"></div>
+    <div class="site-glow site-glow-b" aria-hidden="true"></div>
+    <div class="site-grid" aria-hidden="true"></div>
+
+    <aside class="side-meta side-meta-left" aria-hidden="true">
+      <span class="side-index">01</span>
+      <span class="side-rule"></span>
+      <span>ORBITAL<br>TRAINING<br>PROGRAM</span>
+    </aside>
+
+    <aside class="side-meta side-meta-right" aria-hidden="true">
+      <span>THU · DUSHI</span>
+      <span class="side-rule"></span>
+      <span>2147 / DEEP<br>SPACE<br>MISSION</span>
+    </aside>
+
+    <main id="frame" aria-label="星海笃行游戏画面">
+      <canvas id="game" aria-label="太空射击游戏画布"></canvas>
+      <div class="planet" aria-hidden="true"></div>
+      <div class="nebula" aria-hidden="true"></div>
+      <div class="frame-grid" aria-hidden="true"></div>
+      <div class="vignette" aria-hidden="true"></div>
+      <div class="scanlines" aria-hidden="true"></div>
+      <div id="damage-flash" aria-hidden="true"></div>
+
+      <div id="hud" class="hud" hidden>
+        <header class="hud-top">
+          <div class="hud-score">
+            <span class="micro">SCORE</span>
+            <strong id="score-value">000000</strong>
+          </div>
+          <div class="hud-tools">
+            <div class="hud-meta">
+              <span id="diff-pill">标准</span>
+              <span id="time-value">00:00</span>
+            </div>
+            <button class="icon-btn" id="btn-sound" type="button" aria-label="切换声音" aria-pressed="true">
+              <svg class="icon-sound-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/></svg>
+              <svg class="icon-sound-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="m16 9 5 6M21 9l-5 6"/></svg>
+            </button>
+            <button class="icon-btn" id="btn-pause" type="button" aria-label="暂停游戏">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>
+            </button>
+          </div>
+        </header>
+
+        <div id="boss-ui" class="boss-ui" hidden>
+          <div class="boss-caption">
+            <span class="boss-warning">TARGET LOCKED</span>
+            <span id="boss-phase">航天协议</span>
+            <span id="boss-hp-text">100%</span>
+          </div>
+          <div class="boss-track" role="progressbar" aria-label="Boss 生命值" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
+            <div id="boss-fill" class="boss-fill"></div>
+            <i class="boss-tick boss-tick-a"></i>
+            <i class="boss-tick boss-tick-b"></i>
+          </div>
+        </div>
+
+        <div id="power-rail" class="power-rail" aria-label="三系强化等级">
+          <div class="power-chip power-aero">
+            <span class="power-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 2c3.4 2.8 5 6.6 5 11l-2.2 2.2H9.2L7 13c0-4.4 1.6-8.2 5-11Z"/><path d="M8 15.5 5.5 19l1 1.2 3.8-2M16 15.5l2.5 3.5-1 1.2-3.8-2"/><circle cx="12" cy="9" r="1.7"/></svg>
+            </span>
+            <span class="power-copy"><b>航空航天</b><span class="pips" id="pips-aero"></span></span>
+            <span class="power-lv" id="lvl-aero">0</span>
+          </div>
+          <div class="power-chip power-code">
+            <span class="power-icon power-icon-code" aria-hidden="true">&lt;/&gt;</span>
+            <span class="power-copy"><b>软件学院</b><span class="pips" id="pips-code"></span></span>
+            <span class="power-lv" id="lvl-code">0</span>
+          </div>
+          <div class="power-chip power-ie">
+            <span class="power-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.1"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/></svg>
+            </span>
+            <span class="power-copy"><b>工业工程系</b><span class="pips" id="pips-ie"></span></span>
+            <span class="power-lv" id="lvl-ie">0</span>
+          </div>
+        </div>
+
+        <div class="bottom-hud">
+          <div class="integrity">
+            <div class="integrity-caption"><span>结构完整度</span><span id="hp-text">3 / 3</span></div>
+            <div class="hp-pips" id="hp-pips" aria-label="生命值"></div>
+            <div class="shield-line">
+              <span>算法护盾</span>
+              <div class="shield-pips" id="shield-pips" aria-label="护盾值"></div>
+            </div>
+          </div>
+
+          <button id="bomb-btn" class="bomb-btn" type="button" aria-label="释放笃实脉冲，当前充能 0%">
+            <span class="bomb-ring" aria-hidden="true"></span>
+            <span class="bomb-core">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 2.2 6.1L21 10l-5.4 3.5L17 21l-5-3.8L7 21l1.4-7.5L3 10l6.8-1.9L12 2Z"/></svg>
+              <b>脉冲</b>
+            </span>
+            <span class="bomb-charge" id="bomb-charge">0%</span>
+          </button>
+        </div>
+
+        <div id="hint" class="hint">按住任意位置拖动 · 自动开火 · 收集三系徽章</div>
+
+        <div id="boss-banner" class="boss-banner" hidden>
+          <span class="banner-micro">WARNING</span>
+          <strong>混沌核心 · 信号接入</strong>
+          <span class="banner-sub">三系协议失序 / 准备规避</span>
+        </div>
+
+        <div id="knowledge-card" class="knowledge-card" role="status" aria-live="polite" hidden>
+          <div class="knowledge-top">
+            <span id="knowledge-dept">航天档案</span>
+            <span id="knowledge-num">01 / 05</span>
+          </div>
+          <h3 id="knowledge-title">第一宇宙速度</h3>
+          <p id="knowledge-text">约 7.9 km/s，是贴近地球表面做圆周运动所需的速度。</p>
+          <span id="knowledge-gain" class="knowledge-gain">火力 +1</span>
+        </div>
+
+        <div id="stage-banner" class="stage-banner" hidden>
+          <span id="stage-kicker">航段 01</span>
+          <strong id="stage-title">外环星域</strong>
+          <span id="stage-sub">保持航向 · 收集文明碎片</span>
+        </div>
+      </div>
+
+      <section id="screen-title" class="screen title-screen" aria-labelledby="game-title">
+        <div class="title-top">
+          <div class="brand">
+            <span class="brand-glyph">THU</span>
+            <span>清华大学 · 笃实书院</span>
+          </div>
+          <span class="build-tag">BUILD 2147.01</span>
+        </div>
+
+        <div class="hero">
+          <div class="seal" aria-hidden="true">
+            <span class="seal-ring seal-ring-a"></span>
+            <span class="seal-ring seal-ring-b"></span>
+            <span class="seal-core">笃</span>
+            <i class="seal-satellite"></i>
+          </div>
+          <p class="kicker"><span></span> FEATURED CLASS PROJECT <span></span></p>
+          <h1 id="game-title">星海<span>笃行</span></h1>
+          <div class="title-en">DUSHI <i></i> STARFARER</div>
+          <p class="lede">深空纪元 2147，笃实号在返航途中遭遇「混沌核心」。<br>穿越弹幕，收集三系文明碎片，重启被封锁的跃迁门。</p>
+
+          <button id="btn-ship" class="ship-chip" type="button" aria-haspopup="dialog">
+            <span class="ship-chip-icon" id="ship-chip-icon" aria-hidden="true"></span>
+            <span class="ship-chip-copy">
+              <small>SELECTED CRAFT</small>
+              <strong id="ship-chip-name">笃实号</strong>
+              <em id="ship-chip-role">均衡</em>
+            </span>
+            <span class="ship-chip-action">更换 ↗</span>
+          </button>
+        </div>
+
+        <div class="launch-panel">
+          <div class="difficulty-head mode-head">
+            <span class="micro">SELECT MODE</span>
+            <span id="mode-note">主线 · 约 3–5 分钟</span>
+          </div>
+
+          <div class="mode-switch" id="mode-switch" role="radiogroup" aria-label="选择游戏模式">
+            <button class="mode-option is-selected" type="button" data-mode="campaign" role="radio" aria-checked="true">
+              <span class="mode-name">主线远征</span>
+              <span class="mode-desc">三阶段核心 · 抵达终点</span>
+            </button>
+            <button class="mode-option" type="button" data-mode="endless" role="radio" aria-checked="false">
+              <span class="mode-name">无尽深空</span>
+              <span class="mode-desc">无限层数 · 冲击纪录</span>
+            </button>
+          </div>
+
+          <div class="difficulty-head">
+            <span class="micro">SELECT DIFFICULTY</span>
+            <span id="best-score">最佳记录 0</span>
+          </div>
+
+          <div class="difficulty-grid" id="difficulty-grid" role="radiogroup" aria-label="选择游戏难度">
+            <button class="difficulty-option" type="button" data-difficulty="easy" role="radio" aria-checked="false">
+              <span class="diff-orbit" aria-hidden="true"></span>
+              <span class="diff-name">轻松</span>
+              <span class="diff-grade">观星者</span>
+              <span class="diff-desc">4 结构 · 慢弹幕</span>
+            </button>
+            <button class="difficulty-option is-selected" type="button" data-difficulty="normal" role="radio" aria-checked="true">
+              <span class="diff-orbit" aria-hidden="true"></span>
+              <span class="diff-name">标准</span>
+              <span class="diff-grade">领航员</span>
+              <span class="diff-desc">3 结构 · 均衡</span>
+            </button>
+            <button class="difficulty-option" type="button" data-difficulty="hard" role="radio" aria-checked="false">
+              <span class="diff-orbit" aria-hidden="true"></span>
+              <span class="diff-name">困难</span>
+              <span class="diff-grade">破界者</span>
+              <span class="diff-desc">2 结构 · 密集弹幕</span>
+            </button>
+          </div>
+
+          <button id="btn-launch" class="launch-btn" type="button">
+            <span class="launch-label" id="launch-label">启动引擎</span>
+            <span class="launch-arrow" aria-hidden="true">↗</span>
+          </button>
+
+          <div class="controls-line">
+            <span><i class="key">拖动</i> 移动</span>
+            <span><i class="key">自动</i> 开火</span>
+            <span><i class="key">SPACE</i> 脉冲</span>
+          </div>
+        </div>
+
+        <footer class="title-foot">
+          <span data-class-name>笃实书院 · 特色班</span>
+          <span>THU · DUSHI COLLEGE</span>
+        </footer>
+      </section>
+
+      <section id="screen-pause" class="screen overlay" hidden aria-labelledby="pause-title">
+        <div class="pause-panel panel">
+          <span class="panel-kicker">SIGNAL SUSPENDED</span>
+          <h2 id="pause-title">航行暂停</h2>
+          <p class="panel-copy">宇宙仍在呼吸，弹幕暂时静止。</p>
+          <div class="control-list">
+            <div><span>移动</span><b>拖动 / WASD / 方向键</b></div>
+            <div><span>脉冲</span><b>SPACE / 右下按钮</b></div>
+            <div><span>暂停</span><b>ESC / P</b></div>
+            <div><span>静音</span><b>M</b></div>
+          </div>
+          <div class="panel-actions">
+            <button id="btn-resume" class="btn-primary" type="button">继续航行</button>
+            <button id="btn-restart-pause" class="btn-ghost" type="button">重新开始</button>
+            <button id="btn-home-pause" class="btn-text" type="button">返回星港</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-result" class="screen overlay" hidden aria-labelledby="result-title">
+        <div class="result-panel panel">
+          <div class="result-head">
+            <span id="result-kicker" class="panel-kicker">MISSION REPORT</span>
+            <span id="result-status" class="result-status">SIGNAL LOST</span>
+          </div>
+          <h2 id="result-title">航行终止</h2>
+          <p id="result-subtitle" class="panel-copy">混沌核心仍在呼吸。整理航迹，再次出发。</p>
+
+          <div class="result-score">
+            <span>本次航迹得分</span>
+            <strong id="result-score">0</strong>
+            <span id="result-best">最佳 0</span>
+          </div>
+
+          <div class="result-stats">
+            <div><span>航行时间</span><b id="stat-time">00:00</b></div>
+            <div><span>击毁目标</span><b id="stat-kills">0</b></div>
+            <div><span>收集碎片</span><b id="stat-pickups">0</b></div>
+            <div><span>擦弹次数</span><b id="stat-graze">0</b></div>
+            <div id="stat-layer-cell" hidden><span>深空层数</span><b id="stat-layer">1</b></div>
+          </div>
+
+          <div class="result-disciplines">
+            <span id="result-ship" class="result-ship">战机 · 笃实号</span>
+            <span class="power-aero">航空航天 <b id="result-aero">0</b></span>
+            <span class="power-code">软件学院 <b id="result-code">0</b></span>
+            <span class="power-ie">工业工程系 <b id="result-ie">0</b></span>
+          </div>
+
+          <div id="result-cert" class="result-cert" hidden>
+            <span class="cert-seal">笃</span>
+            <div>
+              <span id="cert-owner">笃实书院 · 特色班</span>
+              <strong>深空航行纪念</strong>
+              <p id="cert-line">已抵达跃迁终点 · 混沌核心已清除</p>
+            </div>
+          </div>
+
+          <div id="result-knowledge" class="result-knowledge" hidden>
+            <div class="result-knowledge-head">
+              <span>本局知识档案</span>
+              <span id="result-knowledge-count">0 张</span>
+            </div>
+            <div id="result-knowledge-list" class="result-knowledge-list"></div>
+          </div>
+
+          <div class="panel-actions result-actions">
+            <button id="btn-again" class="btn-primary" type="button">再次出航</button>
+            <button id="btn-home" class="btn-ghost" type="button">返回星港</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-ship" class="screen overlay ship-screen" hidden aria-labelledby="ship-title">
+        <div class="ship-panel panel">
+          <div class="result-head">
+            <span class="panel-kicker">HANGAR / CRAFT SELECT</span>
+            <span class="build-tag">04 AIRFRAMES</span>
+          </div>
+          <h2 id="ship-title">选择战机</h2>
+          <p class="panel-copy">不同机体拥有独立的火力、结构与护盾配置。</p>
+          <div id="ship-grid" class="ship-grid" role="radiogroup" aria-label="选择战机"></div>
+          <div class="panel-actions result-actions">
+            <button id="btn-ship-confirm" class="btn-primary" type="button">确认战机</button>
+            <button id="btn-ship-close" class="btn-ghost" type="button">返回</button>
+          </div>
+        </div>
+      </section>
+
+      <div id="rotate-tip" class="rotate-tip" hidden>
+        <span>为获得更好的弹幕视野，建议竖屏游玩</span>
+      </div>
+    </main>
+
+    <div class="side-note" aria-hidden="true">
+      <span>SPACE / 2147</span>
+      <i></i>
+      <span>DUSHI COLLEGE</span>
+    </div>
+  </div>
+
+  <script src="game.js" defer></script>
+</body>
+</html>
