@@ -4,15 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <meta name="theme-color" content="#05030f">
-  <meta name="description" content="清华大学笃实书院特色小游戏《星海笃行》——躲避弹幕，收集三系知识，击败混沌核心，抵达跃迁终点。">
+  <meta name="description" content="笃实书院64班特色小游戏《星海笃行》——躲避弹幕，收集三系知识，击败混沌核心，抵达跃迁终点。">
+  <meta name="application-name" content="星海笃行64班">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="星海笃行 · 64班">
   <meta name="format-detection" content="telephone=no">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="星海笃行 · 清华大学笃实书院特色小游戏">
-  <meta property="og:description" content="选择战机，穿越弹幕，收集三系知识，击败混沌核心。支持手机与桌面浏览器。">
-  <title>星海笃行 · 清华大学笃实书院特色小游戏</title>
+  <meta property="og:locale" content="zh_CN">
+  <meta property="og:site_name" content="笃实书院64班">
+  <meta property="og:title" content="星海笃行 · 笃实书院64班">
+  <meta property="og:description" content="笃实书院64班特色小游戏：选择战机，穿越弹幕，收集三系知识，击败混沌核心。支持手机与桌面浏览器。">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="星海笃行 · 笃实书院64班">
+  <meta name="twitter:description" content="笃实书院64班特色小游戏：选择战机，穿越弹幕，收集三系知识，击败混沌核心。">
+  <title>星海笃行 · 笃实书院64班</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2305030f'/%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%23a78bfa' stroke-width='2'/%3E%3Ctext x='32' y='41' text-anchor='middle' font-size='28' fill='%2367e8f9'%3E%E7%AC%83%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -25,11 +32,11 @@
     <aside class="side-meta side-meta-left" aria-hidden="true">
       <span class="side-index">01</span>
       <span class="side-rule"></span>
-      <span>ORBITAL<br>TRAINING<br>PROGRAM</span>
+      <span>CLASS 64<br>ORBITAL<br>TRAINING</span>
     </aside>
 
     <aside class="side-meta side-meta-right" aria-hidden="true">
-      <span>THU · DUSHI</span>
+      <span>THU · DUSHI 64</span>
       <span class="side-rule"></span>
       <span>2147 / DEEP<br>SPACE<br>MISSION</span>
     </aside>
@@ -63,6 +70,11 @@
             </button>
           </div>
         </header>
+
+        <div class="hud-class" aria-hidden="true">
+          <span class="hud-class-icon"></span>
+          <span class="hud-class-label">DUSHI 64</span>
+        </div>
 
         <div id="boss-ui" class="boss-ui" hidden>
           <div class="boss-caption">
@@ -149,21 +161,22 @@
           <div class="brand">
             <span class="brand-glyph">THU</span>
             <span>清华大学 · 笃实书院</span>
+            <span class="brand-class">64班</span>
           </div>
           <span class="build-tag">BUILD 2147.01</span>
         </div>
 
         <div class="hero">
           <div class="seal" aria-hidden="true">
+            <span class="seal-badge"></span>
             <span class="seal-ring seal-ring-a"></span>
             <span class="seal-ring seal-ring-b"></span>
-            <span class="seal-core">笃</span>
             <i class="seal-satellite"></i>
           </div>
-          <p class="kicker"><span></span> FEATURED CLASS PROJECT <span></span></p>
+          <p class="kicker"><span></span> DUSHI COLLEGE · <em class="kicker-class">CLASS 64</em> <span></span></p>
           <h1 id="game-title">星海<span>笃行</span></h1>
-          <div class="title-en">DUSHI <i></i> STARFARER</div>
-          <p class="lede">深空纪元 2147，笃实号在返航途中遭遇「混沌核心」。<br>穿越弹幕，收集三系文明碎片，重启被封锁的跃迁门。</p>
+          <div class="title-en">DUSHI <b>64</b> <i></i> STARFARER</div>
+          <p class="lede">深空纪元 2147，笃实书院的「笃实号」遭遇「混沌核心」。<br>穿越弹幕，收集三系文明碎片，重启被封锁的跃迁门。</p>
 
           <button id="btn-ship" class="ship-chip" type="button" aria-haspopup="dialog">
             <span class="ship-chip-icon" id="ship-chip-icon" aria-hidden="true"></span>
@@ -203,19 +216,19 @@
               <span class="diff-orbit" aria-hidden="true"></span>
               <span class="diff-name">轻松</span>
               <span class="diff-grade">观星者</span>
-              <span class="diff-desc">4 结构 · 慢弹幕</span>
+              <span class="diff-desc">单发点射 · 稀疏</span>
             </button>
             <button class="difficulty-option is-selected" type="button" data-difficulty="normal" role="radio" aria-checked="true">
               <span class="diff-orbit" aria-hidden="true"></span>
               <span class="diff-name">标准</span>
               <span class="diff-grade">领航员</span>
-              <span class="diff-desc">3 结构 · 均衡</span>
+              <span class="diff-desc">等差三连 · 标准</span>
             </button>
             <button class="difficulty-option" type="button" data-difficulty="hard" role="radio" aria-checked="false">
               <span class="diff-orbit" aria-hidden="true"></span>
               <span class="diff-name">困难</span>
               <span class="diff-grade">破界者</span>
-              <span class="diff-desc">2 结构 · 密集弹幕</span>
+              <span class="diff-desc">等差五连 · 密集</span>
             </button>
           </div>
 
@@ -232,14 +245,14 @@
         </div>
 
         <footer class="title-foot">
-          <span data-class-name>笃实书院 · 特色班</span>
-          <span>THU · DUSHI COLLEGE</span>
+          <span data-class-name>笃实书院 · 64班</span>
+          <span>THU · DUSHI 64</span>
         </footer>
       </section>
 
       <section id="screen-pause" class="screen overlay" hidden aria-labelledby="pause-title">
         <div class="pause-panel panel">
-          <span class="panel-kicker">SIGNAL SUSPENDED</span>
+          <span class="panel-kicker">DUSHI 64 · SIGNAL SUSPENDED</span>
           <h2 id="pause-title">航行暂停</h2>
           <p class="panel-copy">宇宙仍在呼吸，弹幕暂时静止。</p>
           <div class="control-list">
@@ -287,9 +300,9 @@
           </div>
 
           <div id="result-cert" class="result-cert" hidden>
-            <span class="cert-seal">笃</span>
+            <span class="cert-seal" aria-hidden="true"></span>
             <div>
-              <span id="cert-owner">笃实书院 · 特色班</span>
+              <span id="cert-owner">笃实书院 · 64班</span>
               <strong>深空航行纪念</strong>
               <p id="cert-line">已抵达跃迁终点 · 混沌核心已清除</p>
             </div>
@@ -334,7 +347,7 @@
     <div class="side-note" aria-hidden="true">
       <span>SPACE / 2147</span>
       <i></i>
-      <span>DUSHI COLLEGE</span>
+      <span>DUSHI COLLEGE · CLASS 64</span>
     </div>
   </div>
 
