@@ -32,6 +32,27 @@
     }
   };
 
+  // 8 / 10 / 12 层是环形弹、旋臂弹与叠层弹幕的基础层数；
+  // 标准与困难额外给每层一个角度偏移，让弹幕形成扇面而不是同心直线。
+  const ENEMY_LAYER_COUNT = [5, 7, 9];
+  const BOSS_LAYER_COUNT = [8, 10, 12];
+  const LAYER_ANGLE_STEP = [0, 0.035, 0.05];
+  // 观测者精英暂时隐藏；代码与绘制保留，便于之后恢复。
+  const ELITE_ENABLED = false;
+
+  // 出怪权重表（参考植物大战僵尸的波次预算）：
+  // weight 越高越容易被选中；cost 越高越占用本波威胁预算；
+  // high 单位每波最多 1 只、同屏最多 2 只，并带冷却与保底。
+  const SPAWN_TABLE = {
+    drone:    { weight: 18, cost: 1.2, pack: 3, maxWave: 4, minTime: 0,  high: false },
+    weaver:   { weight: 12, cost: 1.0, pack: 2, maxWave: 4, minTime: 12, high: false },
+    lancer:   { weight: 14, cost: 1.1, pack: 2, maxWave: 4, minTime: 12, high: false },
+    turret:   { weight: 60, cost: 4.0, pack: 1, maxWave: 1, minTime: 18, high: true, cooldown: 9 },
+    sentinel: { weight: 58, cost: 4.5, pack: 1, maxWave: 2, minTime: 18, high: true, cooldown: 9 },
+    carrier:  { weight: 52, cost: 6.0, pack: 1, maxWave: 1, minTime: 24, high: true, cooldown: 12 }
+  };
+  const HIGH_THREAT_PITY = 15;
+
   const DISCIPLINES = {
     aero: {
       key: 'aero', label: '航空航天', file: '航天档案', pickup: '航天徽章',
@@ -118,16 +139,16 @@
   // Boss 的弹速、发射间隔与血量在三档难度下完全一致，只增减弹量、臂数与安全缺口。
   const BOSS_TUNING = {
     easy: {
-      ringCount: 10, aimedLadder: 1, spiralArms: 2, firewallGaps: 4,
-      gearCount: 14, radialGaps: 4, radialGapWidth: 2.8, phase2Arms: 2
+      ringCount: 8, aimedLadder: 1, spiralArms: 2, firewallGaps: 4,
+      gearCount: 8, radialGaps: 4, radialGapWidth: 1.3, phase2Arms: 2
     },
     normal: {
-      ringCount: 18, aimedLadder: 3, spiralArms: 3, firewallGaps: 3,
-      gearCount: 22, radialGaps: 3, radialGapWidth: 2.0, phase2Arms: 3
+      ringCount: 10, aimedLadder: 3, spiralArms: 3, firewallGaps: 3,
+      gearCount: 12, radialGaps: 3, radialGapWidth: 1.5, phase2Arms: 3
     },
     hard: {
-      ringCount: 26, aimedLadder: 5, spiralArms: 4, firewallGaps: 2,
-      gearCount: 30, radialGaps: 2, radialGapWidth: 1.4, phase2Arms: 4
+      ringCount: 12, aimedLadder: 5, spiralArms: 4, firewallGaps: 2,
+      gearCount: 16, radialGaps: 2, radialGapWidth: 1.7, phase2Arms: 4
     }
   };
 
@@ -239,6 +260,9 @@
       this.usingExternal = false;
       this.wantMusic = false;
       this.externalFadeTimer = null;
+      // 本地 file:// 或严格的自动播放策略可能先拒绝一次 play()；
+      // 保留元素并在下一次用户手势时重试，而不是永久关闭 BGM。
+      this.bgmBlocked = false;
     }
 
     init() {
@@ -282,6 +306,46 @@
       }
       if (this.bothExternalReady()) {
         this.beginExternalBgm(mode);
+      }
+    }
+
+    // 在每次点击 / 按键 / 页面重新可见时调用：若 BGM 曾被自动播放策略拒绝，
+    // 这里会在真实用户手势中重试，而不是让音乐永久静音。
+    unlockBgm() {
+      this.init();
+      if (this.ctx && this.ctx.state === 'suspended') {
+        try { this.ctx.resume(); } catch (_) { /* ignore */ }
+      }
+      if (!this.wantMusic) return;
+      if (!this.bgmEls[this.bgmMode]) {
+        this.setupExternalBgm();
+        return;
+      }
+      if (!this.usingExternal) {
+        if (this.bothExternalReady()) this.beginExternalBgm(this.bgmMode);
+        return;
+      }
+      const active = this.bgmEls[this.bgmMode];
+      if (!active) return;
+      if (!active.paused) {
+        this.bgmBlocked = false;
+        const target = BGM_TRACKS[this.bgmMode].volume * (this.paused ? 0.16 : 1);
+        if (Math.abs(active.volume - target) > 0.005) this.fadeExternalBgm(true);
+        return;
+      }
+      active.muted = this.muted;
+      active.volume = BGM_TRACKS[this.bgmMode].volume * (this.paused ? 0.16 : 1);
+      const promise = active.play();
+      if (promise && promise.then) {
+        promise.then(() => {
+          this.bgmBlocked = false;
+          this.fadeExternalBgm(true);
+        }).catch(() => {
+          this.bgmBlocked = true;
+        });
+      } else {
+        this.bgmBlocked = false;
+        this.fadeExternalBgm(true);
       }
     }
 
@@ -344,12 +408,15 @@
           if (promise && promise.then) {
             promise.then(() => {
               el.muted = wasMuted;
+              this.bgmBlocked = false;
               this.fadeExternalBgm(true);
             }).catch(() => {
-              this.stopExternalBgm();
+              // 首次自动播放可能被拦截；保持 usingExternal，等用户手势重试。
+              this.bgmBlocked = true;
             });
           } else {
             el.muted = wasMuted;
+            this.bgmBlocked = false;
             this.fadeExternalBgm(true);
           }
         } else {
@@ -367,10 +434,11 @@
         if (active) {
           active.muted = this.muted;
           const promise = active.play();
-          if (promise && promise.catch) {
-            promise.catch(() => {
-              this.stopExternalBgm();
-            });
+          if (promise && promise.then) {
+            promise.then(() => { this.bgmBlocked = false; })
+              .catch(() => { this.bgmBlocked = true; });
+          } else {
+            this.bgmBlocked = false;
           }
         }
         this.fadeExternalBgm(true);
@@ -437,6 +505,7 @@
         state: this.ctx ? this.ctx.state : 'none',
         bgm: this.usingExternal,
         external: this.usingExternal,
+        bgmBlocked: this.bgmBlocked,
         externalStatus: {
           menu: this.bgmStatus.menu,
           normal: this.bgmStatus.normal,
@@ -696,6 +765,12 @@
     cycle: 1,
     nextBossAt: 100,
     nextEliteAt: 24,
+    nextHighThreatAt: 24,
+    lastHighThreatAt: 14,
+    waveIndex: 0,
+    waveBudget: 3,
+    spawnCounts: {},
+    carrierSeen: false,
     enemyScale: 1,
     enemyBulletScale: 1,
     player: null,
@@ -712,7 +787,7 @@
     pointer: { active: false, id: null, sx: 0, sy: 0, px: 0, py: 0 },
     keys: new Set(),
     spawnT: 2.4,
-    eliteT: 24,
+    eliteT: 0,
     pickupT: 5,
     pickupCycle: 0,
     stage2: false,
@@ -1120,12 +1195,18 @@
     game.cycle = 1;
     game.nextBossAt = game.mode === 'endless' ? 65 : 100;
     game.nextEliteAt = 24;
+    game.nextHighThreatAt = 24;
+    game.lastHighThreatAt = 14;
+    game.waveIndex = 0;
+    game.waveBudget = 3;
+    game.spawnCounts = {};
+    game.carrierSeen = false;
     game.enemyScale = 1;
     game.enemyBulletScale = 1;
     game.phase = 'combat';
     game.paused = false;
     game.spawnT = 2.2;
-    game.eliteT = 24;
+    game.eliteT = 0;
     game.pickupT = 5;
     game.pickupCycle = 0;
     game.stage2 = false;
@@ -1164,7 +1245,9 @@
       vx: 0,
       vy: 0,
       tilt: 0,
-      r: 6.2 * S * ship.hitbox,
+      // 自机只判定中央小点，机体轮廓不参与碰撞；pickupR 只用于拾取与传送门。
+      r: 2.0 * S * ship.hitbox,
+      pickupR: 6.2 * S,
       grazeR: 27 * S,
       maxHp,
       hp: maxHp,
@@ -1646,7 +1729,10 @@
 
   /* ---------- enemy bullets ---------- */
   function addEnemyBullet(x, y, vx, vy, r, color, type = 'orb', extra = {}) {
-    if (game.eBullets.length >= MAX_ENEMY_BULLETS) game.eBullets.shift();
+    if (game.eBullets.length >= MAX_ENEMY_BULLETS) {
+      // 成批移除最旧的子弹，避免一次齐射内反复 shift() 造成帧尖峰。
+      game.eBullets.splice(0, 64);
+    }
     const speedScale = game.enemyBulletScale || 1;
     game.eBullets.push({
       x, y,
@@ -1662,10 +1748,14 @@
     });
   }
 
-  function radialShot(x, y, count, speed, offset, color, type = 'orb', radius = 4 * S) {
-    for (let i = 0; i < count; i++) {
-      const a = offset + (TAU * i) / count;
-      addEnemyBullet(x, y, Math.cos(a) * speed, Math.sin(a) * speed, radius, color, type);
+  function radialShot(x, y, count, speed, offset, color, type = 'orb', radius = 4 * S, layers = 1, speedStep = 0, angleStep = 0) {
+    for (let layer = 0; layer < layers; layer++) {
+      const layerSpeed = speed + layer * speedStep;
+      const layerAngle = offset + layer * angleStep;
+      for (let i = 0; i < count; i++) {
+        const a = layerAngle + (TAU * i) / count;
+        addEnemyBullet(x, y, Math.cos(a) * layerSpeed, Math.sin(a) * layerSpeed, radius, color, type);
+      }
     }
   }
 
@@ -1701,12 +1791,41 @@
   }
 
   // 软件协议：多条旋臂同时展开，臂数随难度增加。
-  function spiralVolley(x, y, arms, offset, speed, colorA, colorB = colorA, type = 'orb', radius = 3.8 * S) {
-    for (let i = 0; i < arms; i++) {
-      const a = offset + (TAU * i) / arms;
-      addEnemyBullet(x, y, Math.cos(a) * speed, Math.sin(a) * speed,
-        radius, i % 2 ? colorB : colorA, type);
+  function spiralVolley(x, y, arms, offset, speed, colorA, colorB = colorA, type = 'orb', radius = 3.8 * S, layers = 1, speedStep = 0, angleStep = 0) {
+    for (let layer = 0; layer < layers; layer++) {
+      const layerSpeed = speed + layer * speedStep;
+      const layerAngle = offset + layer * angleStep;
+      for (let i = 0; i < arms; i++) {
+        const a = layerAngle + (TAU * i) / arms;
+        addEnemyBullet(x, y, Math.cos(a) * layerSpeed, Math.sin(a) * layerSpeed,
+          radius, i % 2 ? colorB : colorA, type);
+      }
     }
+  }
+
+  // 炮台专用：向下方 / 左下 / 右下三个相隔 120° 的方向集中，
+  // 每个方向 2 / 3 / 4 根齿，每根齿包含完整的 8 / 10 / 12 层。
+  function turretVolley(x, y, tier, dir, baseAngle = Math.PI / 2) {
+    const teeth = [2, 3, 4][tier];
+    const layers = ENEMY_LAYER_COUNT[tier];
+    const toothStep = (20 * Math.PI) / 180;
+    const layerStep = (5.5 * Math.PI) / 180 * dir;
+    const midT = (teeth - 1) / 2;
+    const midL = (layers - 1) / 2;
+    const color = '#fb923c';
+    for (let g = 0; g < 3; g++) {
+      const group = baseAngle + (TAU * g) / 3;
+      for (let t = 0; t < teeth; t++) {
+        const tooth = group + (t - midT) * toothStep;
+        for (let l = 0; l < layers; l++) {
+          const a = tooth + (l - midL) * layerStep;
+          const speed = 96 * S + l * 13 * S;
+          addEnemyBullet(x, y, Math.cos(a) * speed, Math.sin(a) * speed,
+            4.2 * S, color, 'orb');
+        }
+      }
+    }
+    addRing(x, y, 10 * S, 75 * S, color, 0.45, 1.5);
   }
 
   function updateEnemyBullets(dt) {
@@ -1750,7 +1869,7 @@
 
   /* ---------- enemies ---------- */
   function spawnEnemy(kind, x, y, opts = {}) {
-    if (game.enemies.length > 16) return null;
+    if (game.enemies.length > 16 && !opts.force) return null;
     const hpScale = game.enemyScale;
     const base = {
       kind,
@@ -1769,17 +1888,18 @@
     if (kind === 'drone') {
       Object.assign(base, {
         r: 11 * S, hp: 2.6 * hpScale, maxHp: 2.6 * hpScale,
-        score: 22, vy: 83 * S, sine: 20 * S, amp: 2.1
+        score: 22, vy: 83 * S, vx: rand(-24, 24) * S
       });
     } else if (kind === 'weaver') {
       Object.assign(base, {
         r: 14.5 * S, hp: 7 * hpScale, maxHp: 7 * hpScale,
-        score: 46, vy: 64 * S, targetY: H * rand(0.18, 0.30), state: 'enter'
+        score: 46, vy: 64 * S, targetY: H * rand(0.18, 0.30), state: 'enter',
+        sweepDir: x < W * 0.5 ? 1 : -1, sweepSpeed: rand(46, 60) * S
       });
     } else if (kind === 'turret') {
       Object.assign(base, {
         r: 18 * S, hp: 15 * hpScale, maxHp: 15 * hpScale,
-        score: 82, vy: 54 * S, targetY: H * rand(0.17, 0.28), state: 'enter', spin: 0
+        score: 82, vy: 54 * S, targetY: H * rand(0.17, 0.28), state: 'enter', spin: 0, fireT: 0.35
       });
     } else if (kind === 'lancer') {
       Object.assign(base, {
@@ -1796,7 +1916,22 @@
       Object.assign(base, {
         r: 26 * S, hp: 48 * hpScale, maxHp: 48 * hpScale,
         score: 145, vy: 42 * S, targetY: H * rand(0.18, 0.24), state: 'enter',
-        spawnT: 2.8, hiveT: 1.6, drop: true
+        drop: true,
+        driftDir: x < W * 0.5 ? 1 : -1, driftSpeed: rand(10, 14) * S,
+        escortT: 0.8,
+        escortTotal: [4, 6, 8][game.difficulty.tier],
+        escortPhase: rand(0, TAU),
+        escortDir: Math.random() < 0.5 ? -1 : 1,
+        escortRingAge: 0,
+        escortRadius: 38 * S
+      });
+    } else if (kind === 'wingman') {
+      Object.assign(base, {
+        r: 7 * S, hp: 1.3 * hpScale, maxHp: 1.3 * hpScale,
+        score: 8, vy: 0, vx: 0,
+        leader: opts.leader || null,
+        slot: opts.slot || 0,
+        fireT: rand(1.2, 2.2)
       });
     } else {
       Object.assign(base, {
@@ -1808,43 +1943,119 @@
     if (opts.drop) base.drop = true;
     if (opts.x0 !== undefined) base.x0 = opts.x0;
     if (opts.phase !== undefined) base.phase = opts.phase;
+    if (opts.leader) base.leader = opts.leader;
+    if (opts.slot !== undefined) base.slot = opts.slot;
+    game.spawnCounts[kind] = (game.spawnCounts[kind] || 0) + 1;
+    if (kind === 'carrier') game.carrierSeen = true;
     game.enemies.push(base);
     return base;
   }
 
+  function highThreatCount() {
+    return game.enemies.reduce((sum, e) =>
+      sum + ((SPAWN_TABLE[e.kind] && SPAWN_TABLE[e.kind].high) || e.kind === 'elite' ? 1 : 0), 0);
+  }
+
+  function spawnSpawnGroup(kind, n) {
+    for (let i = 0; i < n; i++) {
+      let x;
+      if (kind === 'drone') {
+        x = W * (0.16 + (0.68 * (i + 0.5)) / n) + rand(-10, 10) * S;
+      } else if (kind === 'weaver') {
+        x = W * (0.22 + (0.56 * (i + 0.5)) / n) + rand(-10, 10) * S;
+      } else if (kind === 'lancer') {
+        x = W * rand(0.18, 0.82);
+      } else if (kind === 'turret') {
+        x = W * rand(0.28, 0.72);
+      } else if (kind === 'sentinel') {
+        x = W * rand(0.24, 0.76);
+      } else if (kind === 'carrier') {
+        x = W * rand(0.3, 0.7);
+      } else {
+        x = W * 0.5;
+      }
+      const yBase = kind === 'carrier' ? -70 : kind === 'weaver' ? -40 : -35;
+      const spawned = spawnEnemy(kind, x, yBase * S - i * 38 * S, { x0: x });
+      if (!spawned) break;
+    }
+  }
+
   function spawnWave() {
     const t = game.time;
-    const roll = Math.random();
-    const count = clamp(2 + Math.floor(t / 38) + (Math.random() < 0.32 ? 1 : 0), 2, 5);
-    if (t < 12 || roll < 0.34) {
-      for (let i = 0; i < count; i++) {
-        const x = (W * (i + 1)) / (count + 1) + rand(-14, 14) * S;
-        spawnEnemy('drone', x, -28 * S - i * 38 * S, { phase: rand(0, TAU) });
+    // 参考 PvZ 的波次预算：时间越久预算越高，高威胁单位占用更多预算。
+    // 预算带一点随机波动，但高威胁单位有独立的冷却与保底，不会被随机数放大。
+    const budget = Math.max(3.5, 3.5 + 7.5 * Math.min(1, t / 100)
+      + (game.cycle - 1) * 1.5 + rand(-0.5, 0.5));
+    let remaining = budget;
+    let spawned = 0;
+    const counts = {};
+    game.waveIndex = (game.waveIndex || 0) + 1;
+    game.waveBudget = budget;
+
+    const highAlive = highThreatCount();
+    let highSlots = Math.max(0, 2 - highAlive);
+    let highThisWave = 0;
+    let highReady = t >= game.nextHighThreatAt && highSlots > 0;
+    // 保底：太久没有高威胁单位时，下一波强制优先选择高威胁。
+    let pity = highSlots > 0 && t >= game.lastHighThreatAt + HIGH_THREAT_PITY;
+
+    for (let step = 0; step < 12; step++) {
+      const room = 16 - game.enemies.length;
+      if (room <= 0 || remaining <= 0) break;
+      let candidates = [];
+      for (const kind of Object.keys(SPAWN_TABLE)) {
+        const info = SPAWN_TABLE[kind];
+        if (t < info.minTime) continue;
+        if ((counts[kind] || 0) >= info.maxWave) continue;
+        if (info.cost > remaining + 1e-6) continue;
+        if (info.high && !(highReady || pity)) continue;
+        candidates.push({ kind, info, weight: info.weight });
       }
-    } else if (t > 16 && roll < 0.48) {
-      const n = Math.random() < 0.45 ? 3 : 2;
-      for (let i = 0; i < n; i++) {
-        spawnEnemy('lancer', W * rand(0.18, 0.82), -35 * S - i * 34 * S);
+      if (!candidates.length) break;
+      // 母舰首只保底：只要它已解锁且预算足够，第一次高威胁机会优先给母舰，
+      // 避免 100 秒 Boss 前它被炮台 / 哨兵完全挤掉。
+      const carrierInfo = SPAWN_TABLE.carrier;
+      if (!game.carrierSeen && highSlots > 0 && t >= carrierInfo.minTime
+        && remaining >= carrierInfo.cost && (highReady || pity)) {
+        candidates = [{ kind: 'carrier', info: carrierInfo, weight: carrierInfo.weight }];
       }
-    } else if (roll < 0.6) {
-      const n = Math.random() < 0.5 ? 2 : 3;
-      for (let i = 0; i < n; i++) {
-        spawnEnemy('weaver', W * (0.22 + i * 0.28), -40 * S - i * 40 * S);
+      if (pity) {
+        const highOnly = candidates.filter(c => c.info.high);
+        if (highOnly.length) candidates = highOnly;
       }
-    } else if (t > 24 && roll < 0.73) {
-      spawnEnemy('sentinel', W * rand(0.24, 0.76), -45 * S);
-      if (t > 55) spawnEnemy('drone', W * rand(0.15, 0.85), -100 * S);
-    } else if (roll < 0.86) {
-      spawnEnemy('turret', W * rand(0.28, 0.72), -45 * S);
-      if (t > 45) spawnEnemy('drone', W * rand(0.15, 0.85), -95 * S);
-    } else if (t > 44 && roll < 0.96) {
-      const cx = W * rand(0.3, 0.7);
-      spawnEnemy('carrier', cx, -70 * S, { x0: cx });
-    } else {
-      for (let i = 0; i < 2; i++) {
-        spawnEnemy('drone', W * (i ? 0.74 : 0.26), -34 * S - i * 50 * S);
+
+      let total = 0;
+      for (const c of candidates) total += c.weight;
+      let roll = Math.random() * total;
+      let picked = candidates[candidates.length - 1];
+      for (const c of candidates) {
+        roll -= c.weight;
+        if (roll <= 0) { picked = c; break; }
       }
-      spawnEnemy('weaver', W * 0.5, -96 * S);
+
+      const info = picked.info;
+      const maxByBudget = Math.floor((remaining + 1e-6) / info.cost);
+      const n = Math.min(info.pack, info.maxWave - (counts[picked.kind] || 0),
+        maxByBudget, room);
+      if (n <= 0) break;
+
+      spawnSpawnGroup(picked.kind, n);
+      counts[picked.kind] = (counts[picked.kind] || 0) + n;
+      remaining -= n * info.cost;
+      spawned += n;
+
+      if (info.high) {
+        game.lastHighThreatAt = t;
+        game.nextHighThreatAt = t + (info.cooldown || 9) + rand(-1.5, 1.5);
+        highThisWave++;
+        highSlots--;
+        highReady = highSlots > 0 && highThisWave < 2;
+        pity = false;
+      }
+    }
+
+    if (spawned === 0 && game.enemies.length < 16) {
+      spawnSpawnGroup('drone', 1);
     }
   }
 
@@ -1858,8 +2069,9 @@
       e.hitT = Math.max(0, e.hitT - dt);
 
       if (e.kind === 'drone') {
+        // 直线斜降：每架无人机有固定的小横向漂移，不再左右摆动。
+        e.x += e.vx * dt;
         e.y += e.vy * dt;
-        e.x = e.x0 + Math.sin(e.t * e.amp + e.phase) * e.sine;
         e.fireT -= dt;
         if (e.fireT <= 0 && e.y > 20 && e.y < H * 0.72 && p && !p.dead) {
           // 航天协议：同轴等差弹速。轻松 1 发、标准 3 发、困难 5 发。
@@ -1869,16 +2081,17 @@
       } else if (e.kind === 'weaver') {
         if (e.state === 'enter') {
           e.y += e.vy * dt;
-          e.x = e.x0 + Math.sin(e.t * 2.6) * 28 * S;
           if (e.y >= e.targetY) { e.state = 'strafe'; e.vy = 0; }
+        } else if (e.state === 'leave') {
+          e.y += 120 * S * dt;
         } else {
-          e.y += 15 * S * dt;
-          e.x = e.x0 + Math.sin(e.t * 1.7) * 72 * S;
-          if (e.y > H * 0.72) e.state = 'leave';
-          if (e.state === 'leave') e.y += 120 * S * dt;
+          // 单向斜扫：进入后沿固定方向横移并缓慢下沉，方向清晰可预判。
+          e.x += e.sweepDir * e.sweepSpeed * dt;
+          e.y += 9 * S * dt;
+          if (e.y > H * 0.72 || e.x < 30 * S || e.x > W - 30 * S) e.state = 'leave';
         }
         e.fireT -= dt;
-        if (e.fireT <= 0 && e.state === 'strafe' && p && !p.dead) {
+        if (e.fireT <= 0 && e.state === 'strafe' && e.y < H * 0.75 && p && !p.dead) {
           // 航天协议：镜像编织，1 / 2 / 3 层经纬线。
           weaveShot(e.x, e.y, [1, 2, 3][tier]);
           e.fireT = rand(2.1, 3.0);
@@ -1889,15 +2102,14 @@
           if (e.y >= e.targetY) { e.state = 'hold'; e.y = e.targetY; }
         } else {
           e.spin += dt * 0.7;
-          e.y += Math.sin(e.t * 1.1) * 4 * S * dt;
         }
         e.fireT -= dt;
-        if (e.fireT <= 0 && e.state === 'hold' && p && !p.dead) {
-          // 工业协议：带缺口的齿轮环，环上齿数随难度增加。
-          const ringCount = [10, 18, 26][tier];
-          const gapWidth = [2.6, 2.1, 1.6][tier];
-          radialGaps(e.x, e.y, ringCount, 96 * S, e.spin + e.volley * 0.2,
-            2, gapWidth, '#fb923c', 'orb', 4.2 * S);
+        // 炮台一进入画面就可以开始第一轮齐射，不必等到完全落位。
+        if (e.fireT <= 0 && e.y > 16 * S && e.y < H * 0.75 && p && !p.dead) {
+          // 工业协议：向三个相隔 120° 的方向集中，每个方向 2 / 3 / 4 齿，
+          // 每根齿包含完整层数，层间扇形顺逆交替。
+          const angleDir = e.volley % 2 ? -1 : 1;
+          turretVolley(e.x, e.y, tier, angleDir, e.spin);
           e.volley++;
           e.fireT = 2.6 + rand(-0.2, 0.3);
         }
@@ -1906,7 +2118,7 @@
         e.y += e.vy * dt;
         e.x += e.vx * dt;
         e.fireT -= dt;
-        if (!e.fired && e.fireT <= 0 && e.y > 10 && p && !p.dead) {
+        if (!e.fired && e.fireT <= 0 && e.y > 10 && e.y < H * 0.75 && p && !p.dead) {
           const count = [1, 3, 5][tier];
           ladderShot(e.x, e.y, count, 210 * S, 34 * S, '#fbbf24',
             count === 1 ? 'shard' : 'rice', count === 1 ? 3.8 * S : 3.2 * S);
@@ -1924,14 +2136,17 @@
             e.targetX = clamp(e.x + rand(-W * 0.2, W * 0.2), 40 * S, W - 40 * S);
             e.blinkT = rand(3.8, 5.2);
           }
+          // 折跃到新的固定横坐标后停稳，不再上下漂浮。
           e.x += (e.targetX - e.x) * Math.min(1, dt * 4);
-          e.y = e.targetY + Math.sin(e.t * 1.2) * 6 * S;
+          e.y = e.targetY;
         }
         e.fireT -= dt;
-        if (e.fireT <= 0 && e.state === 'hold' && p && !p.dead) {
-          // 软件协议：棱镜旋臂，2 / 4 / 6 条臂交替青紫。
-          spiralVolley(e.x, e.y, [2, 4, 6][tier], e.spin + e.volley * 0.23,
-            120 * S, '#c4b5fd', '#67e8f9', 'orb', 3.8 * S);
+        if (e.fireT <= 0 && e.state === 'hold' && e.y < H * 0.75 && p && !p.dead) {
+          // 软件协议：棱镜旋臂，4 / 8 / 12 条臂 × 8 / 10 / 12 层，方向交替。
+          const angleDir = e.volley % 2 ? -1 : 1;
+          spiralVolley(e.x, e.y, [4, 8, 12][tier], e.spin + e.volley * 0.23,
+            120 * S, '#c4b5fd', '#67e8f9', 'orb', 3.8 * S,
+            ENEMY_LAYER_COUNT[tier], 14 * S, LAYER_ANGLE_STEP[tier] * angleDir);
           e.volley++;
           e.fireT = 2.2;
         }
@@ -1940,37 +2155,64 @@
           e.y += e.vy * dt;
           if (e.y >= e.targetY) { e.state = 'hold'; e.y = e.targetY; }
         } else {
-          e.x = e.x0 + Math.sin(e.t * 0.55) * Math.min(85 * S, W * 0.16);
-          e.y = e.targetY + Math.sin(e.t * 1.3) * 5 * S;
-          e.spawnT -= dt;
-          if (e.spawnT <= 0 && game.enemies.length < 15) {
-            for (let k = 0; k < 2; k++) {
-              spawnEnemy('drone', e.x + (k ? 24 : -24) * S, e.y + 8 * S, { phase: rand(0, TAU) });
+          // 母舰沿固定方向缓慢平移，并维持一圈绕行的僚机。
+          e.x += e.driftDir * e.driftSpeed * dt;
+          e.y = e.targetY;
+          e.escortRingAge += dt;
+          e.escortPhase += dt * 0.55 * e.escortDir;
+          // 半径按对数速率增长：前期扩张快，后期逐渐变慢。
+          e.escortRadius = Math.min(120 * S,
+            38 * S + Math.log(1 + e.escortRingAge * 0.35) * 28 * S);
+          e.escortT -= dt;
+          if (e.escortT <= 0 && e.y < H * 0.75) {
+            const occupied = new Set();
+            for (const w of game.enemies) {
+              if (w.kind === 'wingman' && w.leader === e && !w.dead) occupied.add(w.slot);
             }
-            spawnBurst(e.x, e.y + 10 * S, '#67e8f9', 12, 100, 1.6);
-            e.spawnT = 5.2;
-          }
-          e.hiveT -= dt;
-          if (e.hiveT <= 0) {
-            // 软件协议：蜂巢舱释放一圈慢速气泡，缺口固定两条。
-            const hiveCount = [12, 18, 24][tier];
-            const hiveGap = [2.4, 2.0, 1.6][tier];
-            radialGaps(e.x, e.y + 6 * S, hiveCount, 76 * S, e.t * 0.4,
-              2, hiveGap, '#67e8f9', 'bubble', 5.2 * S);
-            e.hiveT = 3.6;
+            if (occupied.size === 0) {
+              e.escortRingAge = 0;
+              e.escortRadius = 38 * S;
+            }
+            let summoned = 0;
+            for (let slot = 0; slot < e.escortTotal; slot++) {
+              if (occupied.has(slot)) continue;
+              const a = e.escortPhase + (TAU * slot) / e.escortTotal;
+              const wx = e.x + Math.cos(a) * e.escortRadius;
+              const wy = e.y + Math.sin(a) * e.escortRadius;
+              if (spawnEnemy('wingman', wx, wy, { leader: e, slot, force: true })) summoned++;
+            }
+            if (summoned > 0) {
+              spawnBurst(e.x, e.y + 8 * S, '#67e8f9', 14, 120, 1.8);
+              addRing(e.x, e.y, 8 * S, 66 * S, '#67e8f9', 0.5, 1.6);
+            }
+            e.escortT = 3.2 + rand(-0.3, 0.5);
           }
         }
+      } else if (e.kind === 'wingman') {
+        const leader = e.leader;
+        if (!leader || leader.dead) { e.dead = true; continue; }
+        // 所有僚机共享母舰的相位与半径，因此始终保持均匀分布。
+        const a = leader.escortPhase + (TAU * e.slot) / leader.escortTotal;
+        e.x = leader.x + Math.cos(a) * leader.escortRadius;
+        e.y = leader.y + Math.sin(a) * leader.escortRadius;
+        e.fireT -= dt;
+        if (e.fireT <= 0 && e.y < H * 0.75 && p && !p.dead) {
+          // 类似无人机，但连发数为 1 / 2 / 3。
+          const count = [1, 2, 3][tier];
+          ladderShot(e.x, e.y, count, 154 * S, 32 * S, '#67e8f9', 'rice', 3.0 * S);
+          e.fireT = rand(2.0, 3.0);
+        }
       } else {
-        // elite：观测者依次复现三系协议。
+        // elite：观测者依次复现三系协议，进入后停在固定位置，读弹更清晰。
         if (e.state === 'enter') {
           e.y += e.vy * dt;
           if (e.y >= e.targetY) { e.state = 'fight'; e.y = e.targetY; }
         } else {
-          e.x = e.x0 + Math.sin(e.t * 0.9) * Math.min(110 * S, W * 0.22);
-          e.y = e.targetY + Math.sin(e.t * 1.6) * 9 * S;
+          e.x = e.x0;
+          e.y = e.targetY;
         }
         e.fireT -= dt;
-        if (e.fireT <= 0 && e.state === 'fight' && p && !p.dead) {
+        if (e.fireT <= 0 && e.state === 'fight' && e.y < H * 0.75 && p && !p.dead) {
           const mode = e.volley % 3;
           if (mode === 0) {
             ladderShot(e.x, e.y, [1, 3, 5][tier], 152 * S, 34 * S, '#f5c96b', 'rice', 3.8 * S);
@@ -2058,6 +2300,7 @@
       spiralT: 0,
       spiralAngle: 0,
       gearAngle: 0,
+      gearVolley: 0,
       armAngle: 0,
       armT: 0,
       hitT: 0,
@@ -2101,6 +2344,7 @@
     b.fireT = 1.1;
     b.spiralT = 0;
     b.gearAngle = 0;
+    b.gearVolley = 0;
     b.armAngle = 0;
     b.armT = 0;
     b.volley = 0;
@@ -2279,6 +2523,7 @@
     if (!p || p.dead) return;
 
     const tune = BOSS_TUNING[game.difficulty.key] || BOSS_TUNING.normal;
+    const tier = game.difficulty.tier;
 
     if (b.spellT > 0) {
       b.spellT -= dt;
@@ -2288,9 +2533,10 @@
     if (b.phase === 0) {
       b.fireT -= dt;
       if (b.fireT <= 0) {
-        // 航天协议：金色星弹环形展开，周期性叠加等差弹速直击。
+        // 航天协议：金色星弹环形展开，8 / 10 / 12 层等差弹速，扇面方向交替。
+        const angleDir = b.volley % 2 ? -1 : 1;
         radialShot(b.x, b.y, tune.ringCount, 106 * S, b.volley * 0.17,
-          '#f5c96b', 'star', 4.6 * S);
+          '#f5c96b', 'star', 7 * S, BOSS_LAYER_COUNT[tier], 14 * S, LAYER_ANGLE_STEP[tier] * angleDir);
         if (b.volley % 3 === 0) {
           ladderShot(b.x, b.y, tune.aimedLadder, 146 * S, 30 * S, '#fb923c', 'rice', 3.8 * S);
         }
@@ -2335,9 +2581,12 @@
       if (b.mode === 0) {
         b.fireT -= dt;
         if (b.fireT <= 0) {
-          // 工业协议：双缺口齿轮，齿数与缺口宽度随难度变化。
+          // 工业协议：双缺口齿轮，每根齿含完整 8 / 10 / 12 层，扇形方向交替。
+          const angleDir = b.gearVolley % 2 ? -1 : 1;
+          b.gearVolley++;
           radialGaps(b.x, b.y, tune.gearCount, 96 * S, b.gearAngle,
-            tune.radialGaps, tune.radialGapWidth, '#c4b5fd', 'star', 4.3 * S);
+            tune.radialGaps, tune.radialGapWidth, '#c4b5fd', 'star', 6.5 * S,
+            BOSS_LAYER_COUNT[tier], 12 * S, [0, 0.9, 1.0][tier] * angleDir, 0.35);
           b.gearAngle += 0.34;
           b.fireT = 1.15;
           audio.enemyShoot();
@@ -2383,18 +2632,29 @@
     addRing(b.x, b.y + 10 * S, 8 * S, 80 * S, '#67e8f9', 0.45, 1.5);
   }
 
-  function radialGaps(x, y, count, speed, offset, gapCount, gapWidth, color, type = 'orb', radius = 4.2 * S) {
+  function radialGaps(x, y, count, speed, offset, gapCount, gapWidth, color, type = 'orb', radius = 4.2 * S, layers = 1, speedStep = 0, fanSpread = 0, gapOffset = null) {
+    const step = TAU / count;
+    const gapBase = gapOffset === null ? offset : gapOffset;
     const gapCenters = [];
-    for (let g = 0; g < gapCount; g++) gapCenters.push(offset + (TAU * g) / gapCount + 0.35);
+    for (let g = 0; g < gapCount; g++) gapCenters.push(gapBase + (TAU * g) / gapCount + 0.35);
+    const halfGap = step * gapWidth * 0.5;
+    const mid = (layers - 1) / 2;
+    // 每一根“齿”都包含完整的 layers 层子弹，整根齿要么保留、要么落入缺口，
+    // 这样不会出现某个方向只剩一层、或者齿列参差不齐的情况。
+    const fanStep = layers > 1 ? (step * fanSpread) / Math.max(1, layers - 1) : 0;
     for (let i = 0; i < count; i++) {
-      const a = offset + (TAU * i) / count;
+      const base = offset + step * i;
       let inGap = false;
       for (const gc of gapCenters) {
-        let delta = Math.abs(Math.atan2(Math.sin(a - gc), Math.cos(a - gc)));
-        if (delta < (TAU / count) * gapWidth) { inGap = true; break; }
+        const delta = Math.abs(Math.atan2(Math.sin(base - gc), Math.cos(base - gc)));
+        if (delta < halfGap) { inGap = true; break; }
       }
       if (inGap) continue;
-      addEnemyBullet(x, y, Math.cos(a) * speed, Math.sin(a) * speed, radius, color, type);
+      for (let layer = 0; layer < layers; layer++) {
+        const a = base + (layer - mid) * fanStep;
+        const layerSpeed = speed + layer * speedStep;
+        addEnemyBullet(x, y, Math.cos(a) * layerSpeed, Math.sin(a) * layerSpeed, radius, color, type);
+      }
     }
     addRing(x, y, 10 * S, 75 * S, color, 0.45, 1.5);
   }
@@ -2496,7 +2756,7 @@
           u.x += (dx / d) * pull * dt;
           u.y += (dy / d) * pull * dt;
         }
-        if (d < p.r + u.r + 7 * S) {
+        if (d < p.pickupR + u.r + 7 * S) {
           collectPickup(u);
           game.drops.splice(i, 1);
           continue;
@@ -2588,7 +2848,7 @@
       spawnBurst(b.x, b.y, b.color, 1, 75, 1.4);
     }
     game.eBullets = [];
-    for (const e of game.enemies) damageEnemy(e, 70, e.x, e.y);
+    // 笃实脉冲只清除敌弹并伤害 Boss，不再直接伤害普通敌机。
     if (game.boss && !game.boss.dead) damageBoss(165, game.boss.x, game.boss.y);
     addFloat(p.x, p.y - 46 * S, '笃实脉冲', '#67e8f9', 16);
     audio.bomb();
@@ -2647,7 +2907,7 @@
             Math.random() > 0.5 ? '#67e8f9' : '#a78bfa', 1, 50, 1.3
           );
         }
-        if (dist2(p.x, p.y, game.portal.x, game.portal.y) < (game.portal.r + p.r + 8 * S) ** 2) {
+        if (dist2(p.x, p.y, game.portal.x, game.portal.y) < (game.portal.r + p.pickupR + 8 * S) ** 2) {
           endRun(true);
         }
       }
@@ -2692,19 +2952,25 @@
         / layerRate + rand(-0.25, 0.35);
     }
 
-    if (game.mode === 'campaign') {
-      const eliteTimes = [24, 52, 80];
-      if (game.eliteT < eliteTimes.length && game.time >= eliteTimes[game.eliteT]) {
+    if (ELITE_ENABLED) {
+      if (game.mode === 'campaign') {
+        const eliteTimes = [24, 52, 80];
+        if (game.eliteT < eliteTimes.length && game.time >= eliteTimes[game.eliteT]) {
+          const ex = W * rand(0.35, 0.65);
+          const elite = spawnEnemy('elite', ex, -55 * S, { x0: ex, force: true });
+          if (elite) {
+            showStage('ELITE SIGNAL', '观测者', '高能目标出现 · 击毁可获得额外徽章', 2300);
+            game.eliteT++;
+          }
+        }
+      } else if (game.time >= game.nextEliteAt) {
         const ex = W * rand(0.35, 0.65);
-        spawnEnemy('elite', ex, -55 * S, { x0: ex });
-        showStage('ELITE SIGNAL', '观测者', '高能目标出现 · 击毁可获得额外徽章', 2300);
-        game.eliteT++;
+        const elite = spawnEnemy('elite', ex, -55 * S, { x0: ex, force: true });
+        if (elite) {
+          showStage('ELITE SIGNAL', `观测者 · 深空 ${game.cycle}`, '高能目标出现 · 击毁可获得额外徽章', 2300);
+          game.nextEliteAt = game.time + 32;
+        }
       }
-    } else if (game.time >= game.nextEliteAt) {
-      const ex = W * rand(0.35, 0.65);
-      spawnEnemy('elite', ex, -55 * S, { x0: ex });
-      showStage('ELITE SIGNAL', `观测者 · 深空 ${game.cycle}`, '高能目标出现 · 击毁可获得额外徽章', 2300);
-      game.nextEliteAt = game.time + 32;
     }
 
     game.pickupT -= dt;
@@ -2742,6 +3008,70 @@
     g.fillStyle = grad;
     g.fillRect(0, 0, 64, 64);
     spriteCache.set(color, c);
+    return c;
+  }
+
+  // 星弹使用预渲染精灵，避免每帧为几十上百颗星弹重复做路径 + shadowBlur，
+  // 同时保证星体足够大、足够实心。
+  const starSpriteCache = new Map();
+  function starSprite(color) {
+    if (starSpriteCache.has(color)) return starSpriteCache.get(color);
+    const c = document.createElement('canvas');
+    c.width = c.height = 96;
+    const g = c.getContext('2d');
+    g.translate(48, 48);
+    g.shadowColor = color;
+    g.shadowBlur = 12;
+    g.fillStyle = color;
+    g.beginPath();
+    g.arc(0, 0, 18, 0, TAU);
+    g.fill();
+    g.beginPath();
+    for (let k = 0; k < 8; k++) {
+      const a = (TAU * k) / 8;
+      const rr = k % 2 ? 14 : 32;
+      const x = Math.cos(a) * rr;
+      const y = Math.sin(a) * rr;
+      if (k === 0) g.moveTo(x, y); else g.lineTo(x, y);
+    }
+    g.closePath();
+    g.fill();
+    g.shadowBlur = 0;
+    g.fillStyle = 'rgba(255,255,255,.96)';
+    g.beginPath();
+    g.arc(0, 0, 10, 0, TAU);
+    g.fill();
+    starSpriteCache.set(color, c);
+    return c;
+  }
+
+  // 慢速气泡弹也预渲染，避免母舰一次释放上百颗气泡时逐弹描边/发光造成卡顿。
+  const bubbleSpriteCache = new Map();
+  function bubbleSprite(color) {
+    if (bubbleSpriteCache.has(color)) return bubbleSpriteCache.get(color);
+    const c = document.createElement('canvas');
+    c.width = c.height = 96;
+    const g = c.getContext('2d');
+    g.translate(48, 48);
+    g.shadowColor = color;
+    g.shadowBlur = 10;
+    g.strokeStyle = hexToRgba(color, 0.92);
+    g.lineWidth = 3;
+    g.beginPath();
+    g.arc(0, 0, 34, 0, TAU);
+    g.stroke();
+    g.shadowBlur = 0;
+    g.fillStyle = hexToRgba(color, 0.17);
+    g.fill();
+    g.fillStyle = hexToRgba(color, 0.92);
+    g.beginPath();
+    g.arc(0, 0, 13, 0, TAU);
+    g.fill();
+    g.fillStyle = 'rgba(255,255,255,.9)';
+    g.beginPath();
+    g.arc(-5, -6, 6, 0, TAU);
+    g.fill();
+    bubbleSpriteCache.set(color, c);
     return c;
   }
 
@@ -2993,12 +3323,12 @@
     ctx.globalAlpha = flicker * 0.92;
     ctx.fillStyle = '#fff';
     ctx.beginPath();
-    ctx.arc(0, 0, 2.2 * S, 0, TAU);
+    ctx.arc(0, 0, Math.max(1.2 * S, p.r * 0.62), 0, TAU);
     ctx.fill();
     ctx.strokeStyle = hexToRgba(def.accent, 0.42);
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(0, 0, 7.5 * S, 0, TAU);
+    ctx.arc(0, 0, p.r + 2.2 * S, 0, TAU);
     ctx.stroke();
 
     // support bits
@@ -3162,6 +3492,15 @@
         ctx.arc(0, 0, 2.8 * S, 0, TAU);
         ctx.fill();
       } else if (e.kind === 'carrier') {
+        if (e.escortRadius) {
+          ctx.strokeStyle = 'rgba(103,232,249,.18)';
+          ctx.lineWidth = 1 * S;
+          ctx.setLineDash([4 * S, 7 * S]);
+          ctx.beginPath();
+          ctx.arc(0, 0, e.escortRadius, 0, TAU);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
         ctx.rotate(Math.sin(e.t * 0.6) * 0.06);
         ctx.shadowColor = '#67e8f9';
         ctx.shadowBlur = 20 * S;
@@ -3200,6 +3539,34 @@
         ctx.fillRect(-26 * S, 31 * S, 52 * S, 3 * S);
         ctx.fillStyle = '#67e8f9';
         ctx.fillRect(-26 * S, 31 * S, 52 * S * ratio, 3 * S);
+      } else if (e.kind === 'wingman') {
+        if (e.leader && !e.leader.dead) {
+          ctx.strokeStyle = 'rgba(103,232,249,.22)';
+          ctx.lineWidth = 0.8 * S;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(e.leader.x - e.x, e.leader.y - e.y);
+          ctx.stroke();
+        }
+        ctx.rotate(e.t * 1.8);
+        ctx.shadowColor = '#67e8f9';
+        ctx.shadowBlur = 10 * S;
+        ctx.fillStyle = e.hitT > 0 ? '#fff' : '#10232c';
+        ctx.strokeStyle = '#67e8f9';
+        ctx.lineWidth = 1 * S;
+        ctx.beginPath();
+        ctx.moveTo(0, 8 * S);
+        ctx.lineTo(6 * S, 0);
+        ctx.lineTo(0, -8 * S);
+        ctx.lineTo(-6 * S, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#d9ffff';
+        ctx.beginPath();
+        ctx.arc(0, 0, 2 * S, 0, TAU);
+        ctx.fill();
       } else {
         // elite
         ctx.rotate(Math.sin(e.t * 0.8) * 0.08);
@@ -3431,46 +3798,14 @@
         ctx.ellipse(b.r * 0.32, 0, b.r * 0.92, b.r * 0.34, 0, 0, TAU);
         ctx.fill();
       } else if (b.type === 'bubble') {
-        // 慢速大玉：空心外环 + 实心弹芯，读图优先、压迫感强。
-        ctx.shadowColor = b.color;
-        ctx.shadowBlur = 14 * S;
-        ctx.strokeStyle = hexToRgba(b.color, 0.92);
-        ctx.lineWidth = 1.5 * S;
-        ctx.beginPath();
-        ctx.arc(0, 0, b.r, 0, TAU);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = hexToRgba(b.color, 0.17);
-        ctx.fill();
-        ctx.fillStyle = hexToRgba(b.color, 0.92);
-        ctx.beginPath();
-        ctx.arc(0, 0, b.r * 0.38, 0, TAU);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,.9)';
-        ctx.beginPath();
-        ctx.arc(-b.r * 0.14, -b.r * 0.16, b.r * 0.18, 0, TAU);
-        ctx.fill();
+        // 预渲染气泡精灵：空心外环 + 实心弹芯。
+        const size = b.r * 2.82;
+        ctx.drawImage(bubbleSprite(b.color), -size / 2, -size / 2, size, size);
       } else if (b.type === 'star') {
-        // 四角星弹：符卡环弹的视觉主角。
+        // 预渲染星弹精灵：实心星体 + 大号白芯，且不产生逐弹 shadowBlur 开销。
         ctx.rotate(b.angle + b.spin * 0.2);
-        ctx.shadowColor = b.color;
-        ctx.shadowBlur = 13 * S;
-        ctx.fillStyle = b.color;
-        ctx.beginPath();
-        for (let k = 0; k < 8; k++) {
-          const a = (TAU * k) / 8;
-          const rr = k % 2 ? b.r * 0.58 : b.r * 1.9;
-          const sx = Math.cos(a) * rr;
-          const sy = Math.sin(a) * rr;
-          if (k === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
-        }
-        ctx.closePath();
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = 'rgba(255,255,255,.94)';
-        ctx.beginPath();
-        ctx.arc(0, 0, b.r * 0.52, 0, TAU);
-        ctx.fill();
+        const size = b.r * 5.7;
+        ctx.drawImage(starSprite(b.color), -size / 2, -size / 2, size, size);
       } else {
         drawGlow(0, 0, b.r * 4.5, b.color, 0.92);
         ctx.fillStyle = b.color;
@@ -3824,16 +4159,20 @@
   window.addEventListener('blur', () => { game.keys.clear(); game.pointer.active = false; });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && game.scene === 'playing' && !game.paused && game.phase !== 'ending') pauseGame();
+    if (!document.hidden) audio.unlockBgm();
   });
 
   // Browsers require a gesture before audible playback; start the title theme on
   // the first tap/keypress, then crossfade to the combat theme on launch.
+  // 每次手势都调用 unlockBgm()，以便自动播放被拒绝后能在本地环境重试。
   document.addEventListener('pointerdown', () => {
     if (game.scene === 'title') startMenuBgm();
-  }, { once: true, passive: true });
+    audio.unlockBgm();
+  }, { passive: true });
   window.addEventListener('keydown', () => {
     if (game.scene === 'title') startMenuBgm();
-  }, { once: true });
+    audio.unlockBgm();
+  });
 
   /* ---------- boot / debug ---------- */
   function installDebugApi() {
@@ -3908,10 +4247,19 @@
         maxHp: game.player ? game.player.maxHp : null,
         shield: game.player ? game.player.shield : null,
         maxShield: game.player ? game.player.maxShield : null,
+        hitR: game.player ? +game.player.r.toFixed(2) : null,
+        grazeR: game.player ? +game.player.grazeR.toFixed(2) : null,
         bomb: game.player ? Math.round(game.player.bomb) : null,
         pos: game.player ? [Math.round(game.player.x), Math.round(game.player.y)] : null,
         levels: game.player ? [game.player.fireLvl, game.player.codeLvl, game.player.ieLvl] : null,
         enemies: game.enemies.length,
+        enemyKinds: game.enemies.map(e => e.kind),
+        highThreatAlive: highThreatCount(),
+        waveIndex: game.waveIndex,
+        waveBudget: +(game.waveBudget || 0).toFixed(2),
+        spawnCounts: { ...game.spawnCounts },
+        nextHighThreatAt: +game.nextHighThreatAt.toFixed(2),
+        lastHighThreatAt: +game.lastHighThreatAt.toFixed(2),
         enemyHp: game.enemies.slice(0, 3).map(e => Math.round(e.maxHp)),
         pBullets: game.pBullets.length,
         eBullets: game.eBullets.length,
@@ -3932,6 +4280,10 @@
     setShip(SHIPS[savedShip] ? savedShip : 'dushi', false);
     setMuted(audio.muted);
     resize();
+    // 预生成星弹 / 气泡弹精灵，避免第一次齐射时临时创建 canvas 造成帧尖峰。
+    starSprite('#f5c96b');
+    starSprite('#c4b5fd');
+    bubbleSprite('#67e8f9');
     installDebugApi();
     // Try title music immediately; browsers that block autoplay retry on the
     // first tap/keypress through the one-shot gesture listeners below.
