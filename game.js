@@ -64,6 +64,11 @@
     carrier:  { weight: 52, cost: 6.0, pack: 1, maxWave: 1, minTime: 24, high: true, cooldown: 12 }
   };
   const HIGH_THREAT_PITY = 15;
+  // 守点类敌机的最大停留时间；到时不再开火，改为向下退场。
+  const ENEMY_LEAVE_TIME = {
+    drone: 14, weaver: 16, lancer: 10,
+    turret: 14, sentinel: 16, carrier: 22, elite: 20
+  };
 
   const DISCIPLINES = {
     aero: {
@@ -1987,6 +1992,8 @@
       x0: x,
       y0: y,
       t: rand(0, TAU),
+      age: 0,
+      leaveAt: kind === 'wingman' ? 0 : (ENEMY_LEAVE_TIME[kind] || 20),
       phase: rand(0, TAU),
       dead: false,
       hitT: 0,
@@ -2177,7 +2184,18 @@
       const e = game.enemies[i];
       if (e.dead) { game.enemies.splice(i, 1); continue; }
       e.t += dt;
+      e.age += dt;
       e.hitT = Math.max(0, e.hitT - dt);
+
+      // 守点敌机到时主动向下退场；竖屏下也不会一直停在场上。
+      if (e.leaveAt && e.age > e.leaveAt) {
+        e.y += 120 * S * dt;
+        const off = 90 * S;
+        if (e.y > H + off || e.x < -off || e.x > W + off) {
+          game.enemies.splice(i, 1);
+        }
+        continue;
+      }
 
       if (e.kind === 'drone') {
         // 直线斜降：每架无人机有固定的小横向漂移，不再左右摆动。
@@ -2369,7 +2387,8 @@
         }
       }
 
-      if (e.y > H + 80 || e.x < -100 || e.x > W + 100 || e.t > 42) {
+      const off = 90 * S;
+      if (e.y > H + off || e.x < -off || e.x > W + off || e.age > 42) {
         game.enemies.splice(i, 1);
         continue;
       }
@@ -2712,9 +2731,9 @@
         extra.trailLife = 0.7;
       }
       const wing = place(u * wingHalf, -Math.abs(u) * wingH);
-      addEnemyBullet(wing[0], wing[1], 0, 28 * S, 4 * S, color, 'star', extra);
+      addEnemyBullet(wing[0], wing[1], 0, 28 * S, 3 * S, color, 'star', extra);
       const tail = place(u * tailHalf, -9.8 * S - Math.abs(u) * tailH);
-      addEnemyBullet(tail[0], tail[1], 0, 28 * S, 4 * S, '#e9d5ff', 'star', {
+      addEnemyBullet(tail[0], tail[1], 0, 28 * S, 3 * S, '#e9d5ff', 'star', {
         life: Infinity,
         accelerating: true,
         ax,
@@ -2724,7 +2743,18 @@
   }
 
   function spawnBirdNext(b) {
-    const lanes = Math.max(2, b.birdLanes | 0);
+    // 竖屏宽度较窄时减少轨道数，避免鸟在 x 方向挤在一起。
+    const span = W * 0.72;
+    const minGap = 86 * S;
+    const lanes = clamp(Math.floor(span / minGap) + 1, 3, 9);
+    b.birdLanes = lanes;
+    if (b.birdLane >= lanes) {
+      b.birdLane = lanes - 2;
+      b.birdDir = -1;
+    } else if (b.birdLane < 0) {
+      b.birdLane = 1;
+      b.birdDir = 1;
+    }
     const x = W * (0.14 + 0.72 * (b.birdLane / (lanes - 1)));
     b.birdLane += b.birdDir;
     if (b.birdLane >= lanes) {
