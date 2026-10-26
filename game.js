@@ -1904,27 +1904,6 @@
           b.trailT += b.trailInterval;
         }
       }
-      // 标准和困难的鸟形编队会留下短暂停留的小星星轨迹。
-      if (b.birdEmitter && game.difficulty.tier > 0) {
-        b.trailT -= dt;
-        let guard = 0;
-        while (b.trailT <= 0 && guard++ < 3) {
-          pendingTrails.push({
-            x: b.x,
-            y: b.y,
-            vx: 0,
-            vy: 0,
-            r: 1.7 * S,
-            color: '#e9d5ff',
-            type: 'star',
-            life: b.trailLife,
-            angle: rand(0, TAU),
-            spin: 0,
-            grazed: false
-          });
-          b.trailT += b.trailInterval;
-        }
-      }
       // 拖尾弹先停留，随后消失或向主弹轨迹两侧分开。
       if (!b.mainStar && b.trailDelay > 0 && !b.released) {
         b.trailDelay -= dt;
@@ -2486,7 +2465,9 @@
       transition: 0,
       invuln: 999,
       fireT: 1.2,
-      fan2T: 0,
+      fanQueue: 0,
+      fanDelay: 0,
+      fanNext: 1,
       birdT: 1.2,
       birdSerial: 0,
       birdLane: 0,
@@ -2702,10 +2683,10 @@
   }
 
   function spawnBird(x, y, color) {
-    const wingHalf = 32.2 * S;
-    const wingH = 21 * S;
-    const tailHalf = 4.2 * S;
-    const tailH = 22.4 * S;
+    const wingHalf = 27.6 * S;
+    const wingH = 18 * S;
+    const tailHalf = 3.6 * S;
+    const tailH = 19.2 * S;
     const tier = game.difficulty.tier;
     // 尾巴指向上方很远处的一点，使鸟身略微倾斜；配合横向加速度形成小弧度。
     const focalX = W * 0.5;
@@ -2724,15 +2705,9 @@
         ax,
         ay: 184 * S
       };
-      if (i === 4 && tier > 0) {
-        extra.birdEmitter = true;
-        extra.trailT = 0.06;
-        extra.trailInterval = 0.09;
-        extra.trailLife = 0.7;
-      }
       const wing = place(u * wingHalf, -Math.abs(u) * wingH);
       addEnemyBullet(wing[0], wing[1], 0, 28 * S, 3 * S, color, 'star', extra);
-      const tail = place(u * tailHalf, -9.8 * S - Math.abs(u) * tailH);
+      const tail = place(u * tailHalf, -8.4 * S - Math.abs(u) * tailH);
       addEnemyBullet(tail[0], tail[1], 0, 28 * S, 3 * S, '#e9d5ff', 'star', {
         life: Infinity,
         accelerating: true,
@@ -2851,15 +2826,22 @@
       }
     }
 
-    if (b.fan2T > 0) {
-      b.fan2T -= dt;
-      if (b.fan2T <= 0) midbossStarFan(b, 1);
+    if (b.fanQueue > 0) {
+      b.fanDelay -= dt;
+      if (b.fanDelay <= 0) {
+        midbossStarFan(b, b.fanNext);
+        b.fanNext++;
+        b.fanQueue--;
+        b.fanDelay = 0.12;
+      }
     }
 
     b.fireT -= dt;
     if (b.fireT <= 0) {
       midbossStarFan(b, 0);
-      b.fan2T = game.difficulty.tier === 2 ? 0.12 : 0;
+      b.fanNext = 1;
+      b.fanQueue = [0, 1, 2][game.difficulty.tier];
+      b.fanDelay = 0.12;
       b.fireT = 1.15;
     }
 
