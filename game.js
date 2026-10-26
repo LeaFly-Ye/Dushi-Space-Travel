@@ -15,6 +15,18 @@
   // pickup / layer rewards keep their advertised percentages.
   const PULSE_GAIN_MULT = 0.7;
 
+  // 波次与 Boss 节奏。延长波次间隔并整体后移 Boss 出现时间。
+  const CAMPAIGN_BOSS_WAVE = 61;
+  const MIDBOSS_WAVE = 31;
+  const CAMPAIGN_BOSS_TIME = 150;
+  const ENDLESS_FIRST_BOSS_TIME = 100;
+  const ENDLESS_BOSS_INTERVAL = 80;
+  const STAGE2_TIME = 45;
+  const STAGE3_TIME = 100;
+  const SPAWN_BASE_INTERVAL = 3.4;
+  const SPAWN_INTERVAL_SLOPE = 0.012;
+  const SPAWN_MIN_INTERVAL = 1.45;
+
   // 三档难度共用同一套机体、敌机与 Boss 数值；差异只体现在弹幕编排上。
   // tier: 0 = 单发点射 / 1 = 等差三连 / 2 = 等差五连，所有子弹基准速度一致。
   const DIFFICULTIES = {
@@ -47,7 +59,7 @@
     drone:    { weight: 18, cost: 1.2, pack: 3, maxWave: 3, minTime: 0,  high: false },
     weaver:   { weight: 18, cost: 2.4, pack: 2, maxWave: 2, minTime: 12, high: false },
     lancer:   { weight: 14, cost: 1.1, pack: 2, maxWave: 4, minTime: 12, high: false },
-    turret:   { weight: 60, cost: 4.0, pack: 1, maxWave: 1, minTime: 18, high: true, cooldown: 9 },
+    turret:   { weight: 52, cost: 4.5, pack: 1, maxWave: 2, minTime: 18, high: true, cooldown: 9 },
     sentinel: { weight: 58, cost: 4.5, pack: 1, maxWave: 2, minTime: 18, high: true, cooldown: 9 },
     carrier:  { weight: 52, cost: 6.0, pack: 1, maxWave: 1, minTime: 24, high: true, cooldown: 12 }
   };
@@ -763,7 +775,8 @@
     graze: 0,
     bombCount: 0,
     cycle: 1,
-    nextBossAt: 100,
+    nextBossAt: CAMPAIGN_BOSS_TIME,
+    midbossDone: false,
     nextEliteAt: 24,
     nextHighThreatAt: 24,
     lastHighThreatAt: 14,
@@ -1173,7 +1186,7 @@
       const ratio = clamp(b.hp / b.maxHp, 0, 1);
       el.bossFill.style.transform = `scaleX(${ratio})`;
       el.bossHp.textContent = `${Math.ceil(ratio * 100)}%`;
-      el.bossPhase.textContent = PHASE_NAMES[b.phase] || '混沌核心';
+      el.bossPhase.textContent = b.isMidboss ? '道中 · 笃实人能飞' : (PHASE_NAMES[b.phase] || '混沌核心');
       el.bossTrack.setAttribute('aria-valuenow', String(Math.round(ratio * 100)));
       el.bossUi.classList.toggle('is-transition', b.transition > 0);
     }
@@ -1193,7 +1206,8 @@
     game.graze = 0;
     game.bombCount = 0;
     game.cycle = 1;
-    game.nextBossAt = game.mode === 'endless' ? 65 : 100;
+    game.nextBossAt = game.mode === 'endless' ? ENDLESS_FIRST_BOSS_TIME : CAMPAIGN_BOSS_TIME;
+    game.midbossDone = false;
     game.nextEliteAt = 24;
     game.nextHighThreatAt = 24;
     game.lastHighThreatAt = 14;
@@ -1830,9 +1844,9 @@
         const tooth = group + (t - midT) * toothStep;
         for (let l = 0; l < layers; l++) {
           const a = tooth + (l - midL) * layerStep;
-          const speed = 96 * S + l * 13 * S;
+          const speed = (96 + l * 13) * S * 0.5;
           addEnemyBullet(x, y, Math.cos(a) * speed, Math.sin(a) * speed,
-            4.2 * S, color, 'orb');
+            4.2 * S, color, 'orb', { life: Infinity });
         }
       }
     }
@@ -1881,6 +1895,27 @@
             trailSide: (b.trailIndex++ % 2) ? 1 : -1,
             lateralAccel: b.trailAccel * (game.enemyBulletScale || 1),
             released: false
+          });
+          b.trailT += b.trailInterval;
+        }
+      }
+      // 标准和困难的鸟形编队会留下短暂停留的小星星轨迹。
+      if (b.birdEmitter && game.difficulty.tier > 0) {
+        b.trailT -= dt;
+        let guard = 0;
+        while (b.trailT <= 0 && guard++ < 3) {
+          pendingTrails.push({
+            x: b.x,
+            y: b.y,
+            vx: 0,
+            vy: 0,
+            r: 1.7 * S,
+            color: '#e9d5ff',
+            type: 'star',
+            life: b.trailLife,
+            angle: rand(0, TAU),
+            spin: 0,
+            grazed: false
           });
           b.trailT += b.trailInterval;
         }
@@ -2393,7 +2428,7 @@
       cycle: game.cycle,
       phase: 0,
       t: 0,
-      entry: 2.7,
+      entry: 3.6,
       invuln: 999,
       transition: 0,
       spellT: 0,
@@ -2412,6 +2447,60 @@
       deadT: 0,
       flash: 0
     };
+  }
+
+
+  function createMidboss() {
+    const maxHp = Math.round(1420 / 3);
+    return {
+      isMidboss: true,
+      name: '观察者',
+      x: W * 0.5,
+      y: -110 * S,
+      targetY: H * 0.25,
+      r: 38 * S,
+      hp: maxHp,
+      maxHp,
+      phase: 0,
+      t: 0,
+      entry: 3.2,
+      transition: 0,
+      invuln: 999,
+      fireT: 1.2,
+      fan2T: 0,
+      birdT: 1.2,
+      birdSerial: 0,
+      birdLane: 0,
+      birdDir: 1,
+      birdLanes: 9,
+      spellT: 0.9,
+      spellShown: false,
+      hitT: 0,
+      dead: false,
+      deadT: 0,
+      flash: 0
+    };
+  }
+
+  function startMidboss() {
+    if (game.midbossDone || game.boss) return;
+    game.midbossDone = true;
+    // 道中 Boss 占用第 31 波；击破后常规波次从第 32 波继续。
+    game.waveIndex++;
+    game.phase = 'midboss';
+    game.boss = createMidboss();
+    for (const e of game.enemies) spawnBurst(e.x, e.y, '#a78bfa', 4, 80, 1.2);
+    game.enemies = [];
+    for (const u of game.drops) spawnBurst(u.x, u.y, DISCIPLINES[u.type].color, 2, 50, 1);
+    game.drops = [];
+    hideKnowledge();
+    clearEnemyBullets(true);
+    el.bossUi.hidden = false;
+    el.hud.classList.add('boss-active');
+    showStage('道中 BOSS', '观察者', '笃实人能飞', 2800);
+    game.shake = 14;
+    game.warp = 0.55;
+    audio.warning();
   }
 
   function startBoss() {
@@ -2434,7 +2523,6 @@
     }
     game.shake = 20;
     game.warp = 0.9;
-    audio.setBgmMode('boss');
     audio.warning();
   }
 
@@ -2470,6 +2558,11 @@
     if (!b || b.dead || b.entry || b.invuln > 0) return;
     b.hp -= dmg;
     b.hitT = 0.06;
+    if (b.isMidboss) {
+      spawnBurst(hx, hy, '#c4b5fd', 1, 45, 1);
+      if (b.hp <= 0) defeatMidboss();
+      return;
+    }
     spawnBurst(hx, hy, PHASE_COLORS[b.phase], 1, 45, 1);
     const ratio = b.hp / b.maxHp;
     if (b.hp <= 0) {
@@ -2517,7 +2610,7 @@
     game.boss = null;
     game.phase = 'combat';
     game.cycle++;
-    game.nextBossAt = game.time + 70;
+    game.nextBossAt = game.time + ENDLESS_BOSS_INTERVAL;
     game.nextEliteAt = game.time + 26;
     game.enemyScale = 1 + (game.cycle - 1) * 0.12;
     game.enemyBulletScale = 1 + Math.min(0.2, (game.cycle - 1) * 0.02);
@@ -2565,9 +2658,192 @@
     updateHud(true);
   }
 
+
+  /* ---------- midboss ---------- */
+  function midbossStarFan(b, ring = 0) {
+    const p = game.player;
+    if (!p || p.dead) return;
+    const base = Math.atan2(p.y - b.y, p.x - b.x);
+    const count = 13;
+    const step = Math.PI / 18; // 10°
+    const speed = (132 + ring * 32) * S;
+    const color = ring === 0
+      ? (game.difficulty.tier === 0 ? '#f5c96b' : '#c4b5fd')
+      : '#f5c96b';
+    for (let i = 0; i < count; i++) {
+      const a = base - step * 6 + step * i;
+      addEnemyBullet(b.x, b.y, Math.cos(a) * speed, Math.sin(a) * speed,
+        7 * S, i % 2 ? color : '#f5c96b', 'star', {
+          spin: 1.4,
+          life: 7
+        });
+    }
+    game.shake = Math.max(game.shake, 1.5);
+    audio.enemyShoot();
+  }
+
+  function spawnBird(x, y, color) {
+    const wingHalf = 32.2 * S;
+    const wingH = 21 * S;
+    const tailHalf = 4.2 * S;
+    const tailH = 22.4 * S;
+    const tier = game.difficulty.tier;
+    // 尾巴指向上方很远处的一点，使鸟身略微倾斜；配合横向加速度形成小弧度。
+    const focalX = W * 0.5;
+    const focalY = -H * 1.6;
+    const rot = Math.atan2(focalY - y, focalX - x) + Math.PI / 2;
+    const cos = Math.cos(rot);
+    const sin = Math.sin(rot);
+    // 从上方同一个远焦点向两侧散开：横向加速度朝屏幕外侧。
+    const ax = (x - focalX) * 0.18;
+    const place = (lx, ly) => [x + lx * cos - ly * sin, y + lx * sin + ly * cos];
+    for (let i = 0; i < 9; i++) {
+      const u = (i - 4) / 4;
+      const extra = {
+        life: Infinity,
+        accelerating: true,
+        ax,
+        ay: 184 * S
+      };
+      if (i === 4 && tier > 0) {
+        extra.birdEmitter = true;
+        extra.trailT = 0.06;
+        extra.trailInterval = 0.09;
+        extra.trailLife = 0.7;
+      }
+      const wing = place(u * wingHalf, -Math.abs(u) * wingH);
+      addEnemyBullet(wing[0], wing[1], 0, 28 * S, 4 * S, color, 'star', extra);
+      const tail = place(u * tailHalf, -9.8 * S - Math.abs(u) * tailH);
+      addEnemyBullet(tail[0], tail[1], 0, 28 * S, 4 * S, '#e9d5ff', 'star', {
+        life: Infinity,
+        accelerating: true,
+        ax,
+        ay: 184 * S
+      });
+    }
+  }
+
+  function spawnBirdNext(b) {
+    const lanes = Math.max(2, b.birdLanes | 0);
+    const x = W * (0.14 + 0.72 * (b.birdLane / (lanes - 1)));
+    b.birdLane += b.birdDir;
+    if (b.birdLane >= lanes) {
+      b.birdLane = lanes - 2;
+      b.birdDir = -1;
+    } else if (b.birdLane < 0) {
+      b.birdLane = 1;
+      b.birdDir = 1;
+    }
+    const y = -18 * S - rand(0, 30) * S;
+    spawnBird(x, y, b.birdSerial++ % 2 ? '#f5c96b' : '#c4b5fd');
+  }
+
+  function defeatMidboss() {
+    const b = game.boss;
+    if (!b || b.dead) return;
+    b.hp = 0;
+    b.dead = true;
+    b.deadT = 0;
+    b.invuln = 999;
+    game.phase = 'midboss-dead';
+    const bonus = Math.round(2600 * game.difficulty.scoreMul);
+    game.score += bonus;
+    game.kills++;
+    addFloat(b.x, b.y, `+${fmtNum(bonus)}`, '#f5c96b', 16);
+    game.shake = 22;
+    game.flash = 0.45;
+    game.slowT = 0.8;
+    clearEnemyBullets(true);
+    addRing(b.x, b.y, 18 * S, 300 * S, '#c4b5fd', 0.9, 3);
+    spawnBurst(b.x, b.y, '#c4b5fd', 45, 240, 2.6);
+    spawnBurst(b.x, b.y, '#f5c96b', 25, 180, 2);
+    audio.explode(true);
+  }
+
+  function endMidboss() {
+    game.boss = null;
+    game.phase = 'combat';
+    el.bossUi.hidden = true;
+    el.hud.classList.remove('boss-active');
+    showStage('道中击破', '观察者', '航段继续 · 核心信号仍在逼近', 2600);
+    updateHud(true);
+  }
+
+  function updateMidboss(b, dt) {
+    b.t += dt;
+    b.hitT = Math.max(0, b.hitT - dt);
+    b.flash = Math.max(0, b.flash - dt * 4);
+
+    if (b.dead) {
+      b.deadT += dt;
+      b.y += 12 * S * dt;
+      if (Math.random() < 0.45) {
+        spawnBurst(b.x + rand(-28, 28) * S, b.y + rand(-24, 24) * S,
+          Math.random() > 0.5 ? '#c4b5fd' : '#f5c96b', randInt(1, 4), 120, 1.8);
+      }
+      if (b.deadT > 2.2) endMidboss();
+      return;
+    }
+
+    if (b.entry > 0) {
+      b.entry -= dt;
+      const t = 1 - Math.max(0, b.entry) / 3.2;
+      b.x = W * 0.5;
+      b.y = lerp(-110 * S, b.targetY, 1 - Math.pow(1 - t, 3));
+      b.invuln = 999;
+      b.flash = 0.2;
+      if (b.entry <= 0) {
+        b.entry = 0;
+        b.invuln = 0;
+        b.fireT = 1.0;
+        b.birdT = 1.2;
+        b.spellT = 0.8;
+        game.shake = 14;
+        game.warp = 0.45;
+        addRing(b.x, b.y, 18 * S, 260 * S, '#c4b5fd', 0.8, 2.5);
+      }
+      return;
+    }
+
+    // 不左右摇晃：固定在屏幕中线上。
+    b.x = W * 0.5;
+    b.y = b.targetY;
+
+    const p = game.player;
+    if (!p || p.dead) return;
+
+    if (b.spellT > 0) {
+      b.spellT -= dt;
+      if (b.spellT <= 0 && !b.spellShown) {
+        b.spellShown = true;
+        showStage('SPELL CARD', '笃实人能飞', '道中观察者 · 星羽坠落', 2800);
+        audio.warning();
+      }
+    }
+
+    if (b.fan2T > 0) {
+      b.fan2T -= dt;
+      if (b.fan2T <= 0) midbossStarFan(b, 1);
+    }
+
+    b.fireT -= dt;
+    if (b.fireT <= 0) {
+      midbossStarFan(b, 0);
+      b.fan2T = game.difficulty.tier === 2 ? 0.12 : 0;
+      b.fireT = 1.15;
+    }
+
+    b.birdT -= dt;
+    if (b.birdT <= 0) {
+      spawnBirdNext(b);
+      b.birdT = 0.2;
+    }
+  }
+
   function updateBoss(dt) {
     const b = game.boss;
     if (!b) return;
+    if (b.isMidboss) { updateMidboss(b, dt); return; }
     b.t += dt;
     b.hitT = Math.max(0, b.hitT - dt);
     b.flash = Math.max(0, b.flash - dt * 4);
@@ -2591,7 +2867,7 @@
 
     if (b.entry > 0) {
       b.entry -= dt;
-      const t = 1 - Math.max(0, b.entry) / 2.7;
+      const t = 1 - Math.max(0, b.entry) / 3.6;
       b.y = lerp(-120 * S, b.targetY, 1 - Math.pow(1 - t, 3));
       b.invuln = 999;
       b.flash = 0.2;
@@ -2602,6 +2878,7 @@
         b.spellT = 1.1;
         game.shake = 18;
         game.warp = 0.5;
+        audio.setBgmMode('boss');
         addRing(b.x, b.y, 20 * S, 300 * S, '#f5c96b', 0.9, 3);
       }
       return;
@@ -3031,15 +3308,20 @@
 
   function updateSpawner(dt) {
     if (game.mode === 'campaign') {
-      if (!game.stage2 && game.time >= 35) {
+      if (!game.stage2 && game.time >= STAGE2_TIME) {
         game.stage2 = true;
         showStage('航段 02', '碎片带', '熵增舰队密度上升 · 保持机动', 2600);
       }
-      if (!game.stage3 && game.time >= 70) {
+      if (!game.stage3 && game.time >= STAGE3_TIME) {
         game.stage3 = true;
         showStage('航段 03', '混沌边界', '核心信号逼近 · 准备接敌', 2600);
       }
-      if (game.time >= 100) {
+      // 固定波次：第31波道中 Boss，第61波最终 Boss。
+      if (!game.midbossDone && game.waveIndex + 1 >= MIDBOSS_WAVE) {
+        startMidboss();
+        return;
+      }
+      if (game.waveIndex + 1 >= CAMPAIGN_BOSS_WAVE) {
         startBoss();
         return;
       }
@@ -3052,8 +3334,8 @@
     if (game.spawnT <= 0) {
       spawnWave();
       const layerRate = game.mode === 'endless' ? 1 + (game.cycle - 1) * 0.045 : 1;
-      game.spawnT = Math.max(1.05, 2.55 - game.time * 0.013)
-        / layerRate + rand(-0.25, 0.35);
+      game.spawnT = Math.max(SPAWN_MIN_INTERVAL, SPAWN_BASE_INTERVAL - game.time * SPAWN_INTERVAL_SLOPE)
+        / layerRate + rand(-0.1, 0.15);
     }
 
     if (ELITE_ENABLED) {
@@ -3711,9 +3993,85 @@
     }
   }
 
+
+  function drawMidboss(b) {
+    const deadAlpha = b.dead ? clamp(1 - b.deadT / 2.2, 0, 1) : 1;
+    if (deadAlpha <= 0) return;
+    const pulse = 1 + Math.sin(b.t * 4.2) * 0.03;
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.globalAlpha = deadAlpha;
+    ctx.scale(pulse, pulse);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const aura = ctx.createRadialGradient(0, 0, 8 * S, 0, 0, 92 * S);
+    aura.addColorStop(0, 'rgba(196,181,253,.26)');
+    aura.addColorStop(0.5, 'rgba(103,232,249,.10)');
+    aura.addColorStop(1, 'rgba(196,181,253,0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.arc(0, 0, 92 * S, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+
+    // 观察者的环形眼与四片翼。
+    ctx.save();
+    ctx.rotate(b.t * 0.45);
+    ctx.strokeStyle = 'rgba(103,232,249,.55)';
+    ctx.lineWidth = 1.3 * S;
+    for (let i = 0; i < 4; i++) {
+      const a = (TAU * i) / 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, (28 + i * 4) * S, a, a + 1.5);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    for (let i = 0; i < 4; i++) {
+      const a = (TAU * i) / 4 + Math.PI / 4;
+      ctx.save();
+      ctx.rotate(a);
+      ctx.strokeStyle = i % 2 ? 'rgba(245,201,107,.7)' : 'rgba(196,181,253,.7)';
+      ctx.lineWidth = 1.2 * S;
+      ctx.beginPath();
+      ctx.moveTo(10 * S, 0);
+      ctx.quadraticCurveTo(38 * S, -13 * S, 54 * S, 0);
+      ctx.quadraticCurveTo(38 * S, 13 * S, 10 * S, 0);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.shadowColor = '#c4b5fd';
+    ctx.shadowBlur = 18 * S;
+    ctx.fillStyle = b.hitT > 0 ? '#fff' : '#170d2e';
+    ctx.strokeStyle = '#c4b5fd';
+    ctx.lineWidth = 1.6 * S;
+    ctx.beginPath();
+    ctx.moveTo(0, -27 * S);
+    ctx.lineTo(24 * S, 0);
+    ctx.lineTo(0, 27 * S);
+    ctx.lineTo(-24 * S, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#f5c96b';
+    ctx.beginPath();
+    ctx.arc(0, 0, 6.5 * S, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#fff7d6';
+    ctx.beginPath();
+    ctx.arc(0, 0, 2.8 * S, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
   function drawBoss() {
     const b = game.boss;
     if (!b) return;
+    if (b.isMidboss) { drawMidboss(b); return; }
     const color = PHASE_COLORS[b.phase];
     const deadAlpha = b.dead ? clamp(1 - b.deadT / 2.4, 0, 1) : 1;
     if (deadAlpha <= 0) return;
