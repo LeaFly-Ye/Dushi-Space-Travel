@@ -96,7 +96,11 @@
       { title: '动量轮', text: '卫星常用高速转动的动量轮交换角动量来改变姿态，不必每次都消耗推进剂。' },
       { title: '液氢液氧', text: '液氢/液氧发动机比冲高，燃烧产物主要是水蒸气，是上面级与重型火箭的常见组合。' },
       { title: '比冲', text: '比冲衡量发动机“每单位推进剂产生多少冲量”，工程中常以秒为单位，数值越高越省推进剂。' },
-      { title: '近地轨道', text: '中国空间站运行在约 400 km 的近地轨道，大约每 90 分钟绕地球一圈。' }
+      { title: '近地轨道', text: '中国空间站运行在约 400 km 的近地轨道，大约每 90 分钟绕地球一圈。' },
+      { title: '逃逸速度', text: '约 11.2 km/s。航天器要彻底脱离地球引力，需要达到比近地轨道环绕速度更高的速度。' },
+      { title: '拉格朗日点', text: '两大天体引力与离心效应平衡的位置。L1/L2 适合观测与中继，但轨道不稳定，需要定期修正。' },
+      { title: '火箭方程', text: '齐奥尔科夫斯基公式表明速度增量取决于排气速度与质量比；减重与提高比冲同样重要。' },
+      { title: '垂直回收', text: '可重复使用火箭通过反推、栅格舵与着陆腿垂直回收，降低单位入轨成本，但需预留推进剂。' }
     ],
     code: [
       { title: '快速排序', text: '平均时间复杂度为 O(n log n)，最坏情况 O(n²)。随机化枢轴能让最坏情况几乎不出现。' },
@@ -106,7 +110,11 @@
       { title: '浮点数', text: '在 IEEE 754 双精度中，0.1 + 0.2 并不精确等于 0.3，而是 0.30000000000000004。' },
       { title: '高内聚低耦合', text: '模块内部职责越集中、模块之间依赖越少，软件越容易测试、复用与演进。' },
       { title: '二分查找', text: '二分查找的 O(log n) 建立在有序数据与随机访问之上；每次比较都能排除一半候选区间。' },
-      { title: '幂等性', text: '幂等操作执行一次与多次的结果相同。支付、消息重试等场景常借助幂等键避免重复副作用。' }
+      { title: '幂等性', text: '幂等操作执行一次与多次的结果相同。支付、消息重试等场景常借助幂等键避免重复副作用。' },
+      { title: 'CAP 定理', text: '分布式系统无法同时保证一致性、可用性与分区容忍性，网络分区时必须在一致性与可用性间取舍。' },
+      { title: 'B+ 树索引', text: '数据库常用 B+ 树组织磁盘索引：矮胖、有序、叶节点相连，能用较少 I/O 完成范围查询。' },
+      { title: 'Raft 共识', text: 'Raft 通过领导者选举、日志复制与任期编号维护一致性，把复杂共识拆成更易理解的模块。' },
+      { title: 'Git 快照', text: 'Git 保存提交快照而非逐行差异；分支只是指向提交的可移动指针，因此创建和切换非常轻量。' }
     ],
     ie: [
       { title: '工业工程的对象', text: '工业工程把人、物料、信息、设备与能量视为一个整体系统，追求效率、质量与体验的平衡。' },
@@ -116,7 +124,11 @@
       { title: '甘特图', text: '甘特图把任务、时间与依赖关系放在同一条时间轴上，是项目进度沟通的经典工具。' },
       { title: '动作研究', text: '弗兰克与莉莲·吉尔布雷斯通过分解动作、消除浪费来提升作业效率，也推动了人因工程的发展。' },
       { title: '经济订货批量', text: 'EOQ 模型在订货成本与持有成本之间取平衡；订货太频繁或库存太多都不是最优解。' },
-      { title: '系统布置设计', text: 'SLP 用物流关系与活动关系来安排设施位置，目标是在有限空间里减少搬运与等待。' }
+      { title: '系统布置设计', text: 'SLP 用物流关系与活动关系来安排设施位置，目标是在有限空间里减少搬运与等待。' },
+      { title: '精益生产', text: '精益生产以消除浪费为核心，用看板、拉动式补货与持续改善缩短周期，而不只是提高单机速度。' },
+      { title: '关键路径', text: '关键路径是项目网络中最长的依赖链，决定最短工期；压缩关键路径上的任务才可能提前完工。' },
+      { title: '库存周转', text: '库存周转率反映一段时间内库存被消耗的次数；周转过低占用现金，过高则增加缺货风险。' },
+      { title: '动作经济', text: '动作经济原则通过减少多余移动、调整工位高度与工具位置，降低疲劳并缩短作业周期。' }
     ]
   };
 
@@ -821,6 +833,7 @@
     knowledgeT: 0,
     hintT: 0,
     knowledgeCursor: { aero: 0, code: 0, ie: 0 },
+    knowledgeDeck: { aero: [], code: [], ie: [] },
     knowledgeLog: [],
     lastHitSound: 0,
     timeScale: 1
@@ -1121,17 +1134,30 @@
     }, 2250);
   }
 
+  function shuffledFacts(type) {
+    const deck = KNOWLEDGE[type].slice();
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = randInt(0, i);
+      const tmp = deck[i];
+      deck[i] = deck[j];
+      deck[j] = tmp;
+    }
+    return deck;
+  }
+
   function showKnowledge(type, gainText) {
     const info = DISCIPLINES[type];
     const facts = KNOWLEDGE[type];
-    const index = game.knowledgeCursor[type] % facts.length;
-    const fact = facts[index];
-    game.knowledgeCursor[type] = (game.knowledgeCursor[type] + 1) % facts.length;
+    const deck = game.knowledgeDeck[type] && game.knowledgeDeck[type].length
+      ? game.knowledgeDeck[type] : facts;
+    const index = game.knowledgeCursor[type] % deck.length;
+    const fact = deck[index];
+    game.knowledgeCursor[type] = (game.knowledgeCursor[type] + 1) % deck.length;
     game.knowledgeLog.push({ type, title: fact.title, text: fact.text });
 
     el.knowledge.dataset.dept = type;
     el.knowledgeDept.textContent = info.file;
-    el.knowledgeNum.textContent = `${pad2(index + 1)} / ${pad2(facts.length)}`;
+    el.knowledgeNum.textContent = `${pad2(index + 1)} / ${pad2(deck.length)}`;
     el.knowledgeTitle.textContent = fact.title;
     el.knowledgeText.textContent = fact.text;
     el.knowledgeGain.textContent = gainText;
@@ -1249,6 +1275,11 @@
     game.endWin = false;
     game.knowledgeT = 0;
     game.knowledgeCursor = { aero: 0, code: 0, ie: 0 };
+    game.knowledgeDeck = {
+      aero: shuffledFacts('aero'),
+      code: shuffledFacts('code'),
+      ie: shuffledFacts('ie')
+    };
     game.knowledgeLog = [];
     game.pointer.active = false;
     game.keys.clear();
@@ -2758,7 +2789,8 @@
         life: Infinity,
         accelerating: true,
         ax,
-        ay: 184 * S
+        ay: 184 * S,
+        birdFormation: true
       };
       const wing = place(u * wingHalf, -Math.abs(u) * wingH);
       addEnemyBullet(wing[0], wing[1], 0, 28 * S, 3 * S, color, 'star', extra);
@@ -2767,7 +2799,8 @@
         life: Infinity,
         accelerating: true,
         ax,
-        ay: 184 * S
+        ay: 184 * S,
+        birdFormation: true
       });
     }
   }
@@ -2913,7 +2946,7 @@
     b.birdT -= dt;
     if (b.birdT <= 0) {
       spawnBirdNext(b);
-      b.birdT = 0.2;
+      b.birdT = 0.25;
     }
   }
 
@@ -2971,9 +3004,10 @@
     const group = {
       x: b.x,
       y: b.y,
-      angle: null,
-      state: 'pause',
-      timer: 0.55,
+      angle: game.player && !game.player.dead
+        ? Math.atan2(game.player.y - b.y, game.player.x - b.x) : 0,
+      state: 'move',
+      timer: 0.65,
       pause: 0.35,
       move: 0.65,
       speed: 120 * S,
@@ -3029,13 +3063,14 @@
     const p = game.player;
     g.timer -= dt;
     if (g.timer <= 0) {
-      if (g.state === 'pause') {
+      if (g.state === 'move') {
+        // 移动结束：立即更新瞄准，然后进入停顿。
         if (p && !p.dead) g.angle = Math.atan2(p.y - g.y, p.x - g.x);
-        g.state = 'move';
-        g.timer = g.move;
-      } else {
         g.state = 'pause';
         g.timer = g.pause;
+      } else {
+        g.state = 'move';
+        g.timer = g.move;
       }
     }
     if (g.state === 'move' && g.angle !== null) {
@@ -3432,7 +3467,7 @@
     const p = game.player;
     if (!p || p.dead || p.bomb < 100) return;
     p.bomb = 0;
-    p.inv = Math.max(p.inv, 1.1);
+    p.inv = Math.max(p.inv, 5);
     game.bombCount++;
     game.flash = 0.75;
     game.shake = 24;
@@ -3441,11 +3476,17 @@
     addRing(p.x, p.y, 20 * S, Math.max(W, H) * 0.9, '#67e8f9', 1.0, 5);
     addRing(p.x, p.y, 10 * S, Math.max(W, H) * 0.55, '#c4b5fd', 0.8, 3);
     spawnBurst(p.x, p.y, '#a5f3fc', 55, 420, 2.8);
+    // 鸟形编队与齿轮编队免疫脉冲消弹；其余弹幕正常清除。
+    const kept = [];
     for (const b of game.eBullets) {
+      if (b.birdFormation || b.gearGroup) {
+        kept.push(b);
+        continue;
+      }
       game.score += 3 * game.difficulty.scoreMul;
       spawnBurst(b.x, b.y, b.color, 1, 75, 1.4);
     }
-    game.eBullets = [];
+    game.eBullets = kept;
     // 笃实脉冲只清除敌弹并伤害 Boss，不再直接伤害普通敌机。
     if (game.boss && !game.boss.dead) damageBoss(165, game.boss.x, game.boss.y);
     addFloat(p.x, p.y - 46 * S, '笃实脉冲', '#67e8f9', 16);
@@ -3755,7 +3796,7 @@
     if (!p || p.dead) return;
     const def = p.shipDef || SHIPS.dushi;
     const nowMs = performance.now();
-    const flicker = p.inv > 0 ? 0.45 + Math.sin(nowMs * 0.028) * 0.25 : 1;
+    const flicker = p.inv > 0 ? (Math.floor(nowMs / 75) % 2 ? 0.18 : 1) : 1;
 
     ctx.save();
     ctx.translate(p.x, p.y);
