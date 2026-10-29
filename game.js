@@ -23,9 +23,6 @@
   const ENDLESS_BOSS_INTERVAL = 80;
   const STAGE2_TIME = 45;
   const STAGE3_TIME = 100;
-  const SPAWN_BASE_INTERVAL = 3.0;
-  const SPAWN_INTERVAL_SLOPE = 0.012;
-  const SPAWN_MIN_INTERVAL = 1.45;
 
   // 三档难度共用同一套机体、敌机与 Boss 数值；差异只体现在弹幕编排上。
   // tier: 0 = 单发点射 / 1 = 等差三连 / 2 = 等差五连，所有子弹基准速度一致。
@@ -47,7 +44,7 @@
   // 8 / 10 / 12 层是环形弹、旋臂弹与叠层弹幕的基础层数；
   // 标准与困难额外给每层一个角度偏移，让弹幕形成扇面而不是同心直线。
   const ENEMY_LAYER_COUNT = [5, 7, 9];
-  const BOSS_LAYER_COUNT = [8, 10, 12];
+  const BOSS_LAYER_COUNT = [6, 8, 10];
   const LAYER_ANGLE_STEP = [0, 0.035, 0.05];
   // 观测者精英暂时隐藏；代码与绘制保留，便于之后恢复。
   const ELITE_ENABLED = false;
@@ -1220,7 +1217,7 @@
     game.enemyBulletScale = 1;
     game.phase = 'combat';
     game.paused = false;
-    game.spawnT = 1.4;
+    game.spawnT = 3.0;
     game.eliteT = 0;
     game.pickupT = 5;
     game.pickupCycle = 0;
@@ -2504,7 +2501,7 @@
       fireT: 1.2,
       volley: 0,
       absorbCharge: 0,
-      absorbTarget: [2, 1, 0.5][game.difficulty.tier],
+      absorbTarget: [2, 1.5, 1][game.difficulty.tier],
       absorbPulse: 0,
       mode: 0,
       modeT: 0,
@@ -2860,6 +2857,7 @@
 
   function endMidboss() {
     game.boss = null;
+    game.spawnT = Math.min(game.spawnT, 2.0);
     game.phase = 'combat';
     el.bossUi.hidden = true;
     el.hud.classList.remove('boss-active');
@@ -2953,7 +2951,7 @@
     const radius = Math.hypot(W, H) * 0.8 + 40 * S;
     const angleDir = b.volley % 2 ? -1 : 1;
     for (let l = 0; l < layers; l++) {
-      const speed = 106 * S + l * 14 * S;
+      const speed = 106 * S + l * 20 * S;
       const layerAngle = b.volley * 0.17 + l * LAYER_ANGLE_STEP[tier] * angleDir;
       for (let i = 0; i < count; i++) {
         const a = layerAngle + (TAU * i) / count;
@@ -3585,9 +3583,8 @@
     game.spawnT -= dt;
     if (game.spawnT <= 0) {
       spawnWave();
-      const layerRate = game.mode === 'endless' ? 1 + (game.cycle - 1) * 0.045 : 1;
-      game.spawnT = Math.max(SPAWN_MIN_INTERVAL, SPAWN_BASE_INTERVAL - game.time * SPAWN_INTERVAL_SLOPE)
-        / layerRate + rand(-0.1, 0.15);
+      // 道中 Boss 前 3 秒一波；道中击破后加快为 2 秒一波。
+      game.spawnT = game.mode === 'campaign' && game.midbossDone ? 2.0 : 3.0;
     }
 
     if (ELITE_ENABLED) {
