@@ -814,7 +814,7 @@
     const rect = frame.getBoundingClientRect();
     W = Math.max(280, rect.width);
     H = Math.max(400, rect.height);
-    DPR = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+    DPR = Math.min(1.5, Math.max(1, window.devicePixelRatio || 1));
     canvas.width = Math.round(W * DPR);
     canvas.height = Math.round(H * DPR);
     canvas.style.width = `${W}px`;
@@ -3713,6 +3713,31 @@
     return c;
   }
 
+  const orbSpriteCache = new Map();
+  function orbSprite(color) {
+    if (orbSpriteCache.has(color)) return orbSpriteCache.get(color);
+    const c = document.createElement('canvas');
+    c.width = c.height = 96;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(48, 48, 0, 48, 48, 46);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.22, color);
+    grad.addColorStop(0.55, hexToRgba(color, 0.32));
+    grad.addColorStop(1, hexToRgba(color, 0));
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 96, 96);
+    g.fillStyle = color;
+    g.beginPath();
+    g.arc(48, 48, 19, 0, TAU);
+    g.fill();
+    g.fillStyle = 'rgba(255,255,255,.96)';
+    g.beginPath();
+    g.arc(44, 43, 7, 0, TAU);
+    g.fill();
+    orbSpriteCache.set(color, c);
+    return c;
+  }
+
   function hexToRgba(hex, alpha) {
     const h = hex.replace('#', '');
     const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
@@ -4491,6 +4516,23 @@
 
   function drawEnemyBullets() {
     for (const b of game.eBullets) {
+      // 光玉与气泡不需要逐弹 save/translate/rotate，直接按屏幕坐标绘制。
+      if (b.type === 'orb') {
+        const size = b.r * 5.4;
+        ctx.drawImage(orbSprite(b.color), b.x - size / 2, b.y - size / 2, size, size);
+        continue;
+      }
+      if (b.type === 'bubble') {
+        const size = b.r * 2.82;
+        ctx.drawImage(bubbleSprite(b.color), b.x - size / 2, b.y - size / 2, size, size);
+        continue;
+      }
+      if (b.type === 'star' && !b.mainStar && !b.bigStar) {
+        // 普通星弹近似旋转对称，省掉逐弹变换；主星 / 大星仍保留自转。
+        const size = b.r * 5.7;
+        ctx.drawImage(starSprite(b.color), b.x - size / 2, b.y - size / 2, size, size);
+        continue;
+      }
       ctx.save();
       ctx.translate(b.x, b.y);
       if (b.type === 'square') {
@@ -4520,7 +4562,6 @@
         ctx.arc(b.r * 0.4, 0, b.r * 0.5, 0, TAU);
         ctx.fill();
       } else if (b.type === 'rice') {
-        // 东方风米弹：细长、带白芯，速度方向即弹体朝向。
         ctx.rotate(b.angle);
         ctx.shadowColor = b.color;
         ctx.shadowBlur = 9 * S;
@@ -4533,25 +4574,13 @@
         ctx.beginPath();
         ctx.ellipse(b.r * 0.32, 0, b.r * 0.92, b.r * 0.34, 0, 0, TAU);
         ctx.fill();
-      } else if (b.type === 'bubble') {
-        // 预渲染气泡精灵：空心外环 + 实心弹芯。
-        const size = b.r * 2.82;
-        ctx.drawImage(bubbleSprite(b.color), -size / 2, -size / 2, size, size);
       } else if (b.type === 'star') {
-        // 预渲染星弹精灵：实心星体 + 大号白芯，且不产生逐弹 shadowBlur 开销。
         ctx.rotate(b.angle);
         const size = b.r * 5.7;
         ctx.drawImage(starSprite(b.color), -size / 2, -size / 2, size, size);
       } else {
-        drawGlow(0, 0, b.r * 4.5, b.color, 0.92);
-        ctx.fillStyle = b.color;
-        ctx.beginPath();
-        ctx.arc(0, 0, b.r, 0, TAU);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,.96)';
-        ctx.beginPath();
-        ctx.arc(-b.r * 0.18, -b.r * 0.2, b.r * 0.42, 0, TAU);
-        ctx.fill();
+        const size = b.r * 5.4;
+        ctx.drawImage(orbSprite(b.color), -size / 2, -size / 2, size, size);
       }
       ctx.restore();
     }

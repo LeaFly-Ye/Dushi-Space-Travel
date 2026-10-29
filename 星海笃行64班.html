@@ -391,8 +391,6 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
   background: rgba(9, 6, 22, .56);
   color: var(--muted);
   cursor: pointer;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   transition: border-color .18s, color .18s, background .18s;
 }
 .icon-btn:hover { color: var(--text); border-color: rgba(196,181,253,.38); background: rgba(109,40,217,.14); }
@@ -411,8 +409,6 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
   border: 1px solid rgba(251, 113, 133, .20);
   border-radius: 8px;
   background: linear-gradient(180deg, rgba(30, 8, 24, .68), rgba(9, 5, 20, .58));
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   box-shadow: 0 0 26px rgba(251, 113, 133, .08);
   animation: bossIn .5s var(--ease-out) both;
 }
@@ -472,8 +468,6 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
   border: 1px solid rgba(196,181,253,.11);
   border-radius: 7px;
   background: rgba(8, 5, 19, .48);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
 }
 .power-icon {
   display: grid;
@@ -619,8 +613,6 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
   font-size: 9.5px;
   letter-spacing: .05em;
   white-space: nowrap;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   box-shadow: 0 8px 26px rgba(0,0,0,.28);
   opacity: 0;
   transition: opacity .6s ease;
@@ -643,8 +635,6 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
   background:
     linear-gradient(120deg, rgba(14,10,32,.92), rgba(8,6,20,.76));
   box-shadow: 0 18px 40px rgba(0,0,0,.35), 0 0 28px rgba(103,232,249,.05);
-  backdrop-filter: blur(15px);
-  -webkit-backdrop-filter: blur(15px);
   pointer-events: none;
   opacity: 0;
   transform: translateX(-18px);
@@ -708,8 +698,6 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
   background:
     linear-gradient(100deg, rgba(12,8,28,.90), rgba(9,6,22,.72));
   box-shadow: 0 16px 38px rgba(0,0,0,.32), 0 0 24px rgba(109,40,217,.07);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   pointer-events: none;
   opacity: 0;
   transform: translateX(-12px);
@@ -902,8 +890,6 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
   background: rgba(9,6,22,.52);
   color: var(--text);
   cursor: pointer;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   transition: border-color .2s, background .2s, transform .2s;
 }
 .ship-chip:hover { border-color: rgba(196,181,253,.42); background: rgba(109,40,217,.15); transform: translateY(-1px); }
@@ -1126,8 +1112,6 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
   justify-content: center;
   padding: 22px;
   background: rgba(3,2,9,.58);
-  backdrop-filter: blur(9px);
-  -webkit-backdrop-filter: blur(9px);
   animation: overlayIn .22s ease both;
 }
 @keyframes overlayIn { from { opacity: 0; } }
@@ -1262,7 +1246,6 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
   font-size: 9px;
   white-space: nowrap;
   pointer-events: none;
-  backdrop-filter: blur(10px);
 }
 
 /* responsive */
@@ -2517,7 +2500,7 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
     const rect = frame.getBoundingClientRect();
     W = Math.max(280, rect.width);
     H = Math.max(400, rect.height);
-    DPR = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+    DPR = Math.min(1.5, Math.max(1, window.devicePixelRatio || 1));
     canvas.width = Math.round(W * DPR);
     canvas.height = Math.round(H * DPR);
     canvas.style.width = `${W}px`;
@@ -5416,6 +5399,31 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
     return c;
   }
 
+  const orbSpriteCache = new Map();
+  function orbSprite(color) {
+    if (orbSpriteCache.has(color)) return orbSpriteCache.get(color);
+    const c = document.createElement('canvas');
+    c.width = c.height = 96;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(48, 48, 0, 48, 48, 46);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.22, color);
+    grad.addColorStop(0.55, hexToRgba(color, 0.32));
+    grad.addColorStop(1, hexToRgba(color, 0));
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 96, 96);
+    g.fillStyle = color;
+    g.beginPath();
+    g.arc(48, 48, 19, 0, TAU);
+    g.fill();
+    g.fillStyle = 'rgba(255,255,255,.96)';
+    g.beginPath();
+    g.arc(44, 43, 7, 0, TAU);
+    g.fill();
+    orbSpriteCache.set(color, c);
+    return c;
+  }
+
   function hexToRgba(hex, alpha) {
     const h = hex.replace('#', '');
     const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
@@ -6194,6 +6202,23 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
 
   function drawEnemyBullets() {
     for (const b of game.eBullets) {
+      // 光玉与气泡不需要逐弹 save/translate/rotate，直接按屏幕坐标绘制。
+      if (b.type === 'orb') {
+        const size = b.r * 5.4;
+        ctx.drawImage(orbSprite(b.color), b.x - size / 2, b.y - size / 2, size, size);
+        continue;
+      }
+      if (b.type === 'bubble') {
+        const size = b.r * 2.82;
+        ctx.drawImage(bubbleSprite(b.color), b.x - size / 2, b.y - size / 2, size, size);
+        continue;
+      }
+      if (b.type === 'star' && !b.mainStar && !b.bigStar) {
+        // 普通星弹近似旋转对称，省掉逐弹变换；主星 / 大星仍保留自转。
+        const size = b.r * 5.7;
+        ctx.drawImage(starSprite(b.color), b.x - size / 2, b.y - size / 2, size, size);
+        continue;
+      }
       ctx.save();
       ctx.translate(b.x, b.y);
       if (b.type === 'square') {
@@ -6223,7 +6248,6 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
         ctx.arc(b.r * 0.4, 0, b.r * 0.5, 0, TAU);
         ctx.fill();
       } else if (b.type === 'rice') {
-        // 东方风米弹：细长、带白芯，速度方向即弹体朝向。
         ctx.rotate(b.angle);
         ctx.shadowColor = b.color;
         ctx.shadowBlur = 9 * S;
@@ -6236,25 +6260,13 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
         ctx.beginPath();
         ctx.ellipse(b.r * 0.32, 0, b.r * 0.92, b.r * 0.34, 0, 0, TAU);
         ctx.fill();
-      } else if (b.type === 'bubble') {
-        // 预渲染气泡精灵：空心外环 + 实心弹芯。
-        const size = b.r * 2.82;
-        ctx.drawImage(bubbleSprite(b.color), -size / 2, -size / 2, size, size);
       } else if (b.type === 'star') {
-        // 预渲染星弹精灵：实心星体 + 大号白芯，且不产生逐弹 shadowBlur 开销。
         ctx.rotate(b.angle);
         const size = b.r * 5.7;
         ctx.drawImage(starSprite(b.color), -size / 2, -size / 2, size, size);
       } else {
-        drawGlow(0, 0, b.r * 4.5, b.color, 0.92);
-        ctx.fillStyle = b.color;
-        ctx.beginPath();
-        ctx.arc(0, 0, b.r, 0, TAU);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,.96)';
-        ctx.beginPath();
-        ctx.arc(-b.r * 0.18, -b.r * 0.2, b.r * 0.42, 0, TAU);
-        ctx.fill();
+        const size = b.r * 5.4;
+        ctx.drawImage(orbSprite(b.color), -size / 2, -size / 2, size, size);
       }
       ctx.restore();
     }

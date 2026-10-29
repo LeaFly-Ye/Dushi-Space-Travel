@@ -367,8 +367,6 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
   background: rgba(9, 6, 22, .56);
   color: var(--muted);
   cursor: pointer;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   transition: border-color .18s, color .18s, background .18s;
 }
 .icon-btn:hover { color: var(--text); border-color: rgba(196,181,253,.38); background: rgba(109,40,217,.14); }
@@ -387,8 +385,6 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
   border: 1px solid rgba(251, 113, 133, .20);
   border-radius: 8px;
   background: linear-gradient(180deg, rgba(30, 8, 24, .68), rgba(9, 5, 20, .58));
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   box-shadow: 0 0 26px rgba(251, 113, 133, .08);
   animation: bossIn .5s var(--ease-out) both;
 }
@@ -448,8 +444,6 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
   border: 1px solid rgba(196,181,253,.11);
   border-radius: 7px;
   background: rgba(8, 5, 19, .48);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
 }
 .power-icon {
   display: grid;
@@ -595,8 +589,6 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
   font-size: 9.5px;
   letter-spacing: .05em;
   white-space: nowrap;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   box-shadow: 0 8px 26px rgba(0,0,0,.28);
   opacity: 0;
   transition: opacity .6s ease;
@@ -619,8 +611,6 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
   background:
     linear-gradient(120deg, rgba(14,10,32,.92), rgba(8,6,20,.76));
   box-shadow: 0 18px 40px rgba(0,0,0,.35), 0 0 28px rgba(103,232,249,.05);
-  backdrop-filter: blur(15px);
-  -webkit-backdrop-filter: blur(15px);
   pointer-events: none;
   opacity: 0;
   transform: translateX(-18px);
@@ -684,8 +674,6 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
   background:
     linear-gradient(100deg, rgba(12,8,28,.90), rgba(9,6,22,.72));
   box-shadow: 0 16px 38px rgba(0,0,0,.32), 0 0 24px rgba(109,40,217,.07);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   pointer-events: none;
   opacity: 0;
   transform: translateX(-12px);
@@ -878,8 +866,6 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
   background: rgba(9,6,22,.52);
   color: var(--text);
   cursor: pointer;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   transition: border-color .2s, background .2s, transform .2s;
 }
 .ship-chip:hover { border-color: rgba(196,181,253,.42); background: rgba(109,40,217,.15); transform: translateY(-1px); }
@@ -1102,8 +1088,6 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
   justify-content: center;
   padding: 22px;
   background: rgba(3,2,9,.58);
-  backdrop-filter: blur(9px);
-  -webkit-backdrop-filter: blur(9px);
   animation: overlayIn .22s ease both;
 }
 @keyframes overlayIn { from { opacity: 0; } }
@@ -1238,7 +1222,6 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
   font-size: 9px;
   white-space: nowrap;
   pointer-events: none;
-  backdrop-filter: blur(10px);
 }
 
 /* responsive */
