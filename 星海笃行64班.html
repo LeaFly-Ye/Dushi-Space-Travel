@@ -3756,34 +3756,34 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
     };
     if (kind === 'drone') {
       Object.assign(base, {
-        r: 11 * S, hp: 2.6 * hpScale, maxHp: 2.6 * hpScale,
+        r: 11 * S, hp: 2 * hpScale, maxHp: 2 * hpScale,
         score: 22, vy: 83 * S, vx: rand(-24, 24) * S, fireT: 0.35
       });
     } else if (kind === 'weaver') {
       Object.assign(base, {
-        r: 14.5 * S, hp: 7 * hpScale, maxHp: 7 * hpScale,
+        r: 14.5 * S, hp: 6 * hpScale, maxHp: 6 * hpScale,
         score: 46, vy: 64 * S, targetY: H * rand(0.18, 0.30), state: 'enter', fireT: 0.35,
         sweepDir: x < W * 0.5 ? 1 : -1, sweepSpeed: rand(46, 60) * S
       });
     } else if (kind === 'turret') {
       Object.assign(base, {
-        r: 18 * S, hp: 30 * hpScale, maxHp: 30 * hpScale,
+        r: 18 * S, hp: 24 * hpScale, maxHp: 24 * hpScale,
         score: 82, vy: 160 * S, targetY: H * rand(0.17, 0.28), state: 'enter', spin: 0, fireT: 0.35
       });
     } else if (kind === 'lancer') {
       Object.assign(base, {
-        r: 10 * S, hp: 3.8 * hpScale, maxHp: 3.8 * hpScale,
+        r: 10 * S, hp: 2 * hpScale, maxHp: 2 * hpScale,
         score: 34, vy: 150 * S, vx: rand(-72, 72) * S, fired: false, fireT: 0.2
       });
     } else if (kind === 'sentinel') {
       Object.assign(base, {
-        r: 16 * S, hp: 36 * hpScale, maxHp: 36 * hpScale,
+        r: 16 * S, hp: 28.8 * hpScale, maxHp: 28.8 * hpScale,
         score: 72, vy: 160 * S, targetY: H * rand(0.17, 0.27), state: 'enter', fireT: 0.35,
         spin: rand(0, TAU), blinkT: rand(3.6, 5.2), targetX: x
       });
     } else if (kind === 'carrier') {
       Object.assign(base, {
-        r: 26 * S, hp: 72 * hpScale, maxHp: 72 * hpScale,
+        r: 26 * S, hp: 60 * hpScale, maxHp: 60 * hpScale,
         score: 145, vy: 160 * S, targetY: H * rand(0.18, 0.24), state: 'enter',
         drop: true,
         driftDir: x < W * 0.5 ? 1 : -1, driftSpeed: rand(10, 14) * S,
@@ -3796,7 +3796,7 @@ body.is-muted .icon-btn .icon-sound-off { display: block; }
       });
     } else if (kind === 'wingman') {
       Object.assign(base, {
-        r: 7 * S, hp: 1.3 * hpScale, maxHp: 1.3 * hpScale,
+        r: 7 * S, hp: 1 * hpScale, maxHp: 1 * hpScale,
         score: 8, vy: 0, vx: 0,
         leader: opts.leader || null,
         ring: opts.ring || null,
